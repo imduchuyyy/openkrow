@@ -4,8 +4,8 @@ import type {
   LLMConfig,
   ChatMessage,
   ChatResponse,
+  ChatOptions,
   StreamEvent,
-  ToolDefinition,
   ModelInfo,
 } from "../types.js";
 
@@ -22,11 +22,7 @@ export class GoogleProvider implements LLMProvider {
 
   async chat(
     messages: ChatMessage[],
-    options?: {
-      tools?: ToolDefinition[];
-      temperature?: number;
-      maxTokens?: number;
-    }
+    options?: ChatOptions
   ): Promise<ChatResponse> {
     const model = this.genAI.getGenerativeModel({ model: this.model });
 
@@ -76,11 +72,7 @@ export class GoogleProvider implements LLMProvider {
 
   async *stream(
     messages: ChatMessage[],
-    options?: {
-      tools?: ToolDefinition[];
-      temperature?: number;
-      maxTokens?: number;
-    }
+    options?: ChatOptions
   ): AsyncIterable<StreamEvent> {
     const model = this.genAI.getGenerativeModel({ model: this.model });
 

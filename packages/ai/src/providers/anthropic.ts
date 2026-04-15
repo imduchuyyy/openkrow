@@ -4,8 +4,8 @@ import type {
   LLMConfig,
   ChatMessage,
   ChatResponse,
+  ChatOptions,
   StreamEvent,
-  ToolDefinition,
   ModelInfo,
 } from "../types.js";
 
@@ -24,11 +24,7 @@ export class AnthropicProvider implements LLMProvider {
 
   async chat(
     messages: ChatMessage[],
-    options?: {
-      tools?: ToolDefinition[];
-      temperature?: number;
-      maxTokens?: number;
-    }
+    options?: ChatOptions
   ): Promise<ChatResponse> {
     const systemMessage = messages.find((m) => m.role === "system");
     const nonSystemMessages = messages.filter((m) => m.role !== "system");
@@ -78,11 +74,7 @@ export class AnthropicProvider implements LLMProvider {
 
   async *stream(
     messages: ChatMessage[],
-    options?: {
-      tools?: ToolDefinition[];
-      temperature?: number;
-      maxTokens?: number;
-    }
+    options?: ChatOptions
   ): AsyncIterable<StreamEvent> {
     const systemMessage = messages.find((m) => m.role === "system");
     const nonSystemMessages = messages.filter((m) => m.role !== "system");

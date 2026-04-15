@@ -1,5 +1,5 @@
 import { Agent } from "@openkrow/agent-core";
-import { createClient, type LLMConfig } from "@openkrow/ai";
+import type { LLMConfig } from "@openkrow/ai";
 import type { OpenKrowConfig } from "./config/loader.js";
 import { loadConfig } from "./config/loader.js";
 import { registerBuiltinTools } from "./tools.js";

@@ -108,7 +108,7 @@ function handleSlashCommand(
       break;
 
     case "/clear":
-      krow.getAgent().state.reset();
+      krow.getAgent().context.reset();
       console.log("  Conversation cleared.\n");
       break;
 

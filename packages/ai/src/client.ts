@@ -3,8 +3,8 @@ import type {
   LLMConfig,
   ChatMessage,
   ChatResponse,
+  ChatOptions,
   StreamEvent,
-  ToolDefinition,
   ModelInfo,
 } from "./types.js";
 import { OpenAIProvider } from "./providers/openai.js";
@@ -38,22 +38,14 @@ export class LLMClient implements LLMProvider {
 
   async chat(
     messages: ChatMessage[],
-    options?: {
-      tools?: ToolDefinition[];
-      temperature?: number;
-      maxTokens?: number;
-    }
+    options?: ChatOptions
   ): Promise<ChatResponse> {
     return this.provider.chat(messages, options);
   }
 
   async *stream(
     messages: ChatMessage[],
-    options?: {
-      tools?: ToolDefinition[];
-      temperature?: number;
-      maxTokens?: number;
-    }
+    options?: ChatOptions
   ): AsyncIterable<StreamEvent> {
     yield* this.provider.stream(messages, options);
   }
