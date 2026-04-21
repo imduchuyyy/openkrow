@@ -19,7 +19,7 @@ import type {
   AgentMessage,
   WorkspaceContext,
   UserPersonality,
-} from "./types.js";
+} from "../types/index.js";
 
 /**
  * Rough token estimation: ~4 characters per token.

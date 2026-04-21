@@ -24,9 +24,9 @@ import type {
   AgentMessage,
   AgentTurn,
   ToolResult,
-} from "./types.js";
-import { ToolRegistry } from "./tools.js";
-import { ContextManager } from "./context.js";
+} from "../types/index.js";
+import { ToolRegistry } from "../tools/index.js";
+import { ContextManager } from "../context/index.js";
 
 export class Agent extends EventEmitter<AgentEvents> {
   readonly config: AgentConfig;

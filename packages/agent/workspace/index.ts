@@ -26,7 +26,7 @@ import type {
   ConversationSummary,
   PersistedConversation,
   GlobalConversationIndex,
-} from "./types.js";
+} from "../types/index.js";
 
 const KROW_DIR = ".krow";
 const CONTEXT_FILE = "context.json";

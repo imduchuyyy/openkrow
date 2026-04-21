@@ -26,7 +26,7 @@ import type {
   Skill,
   MCPServerConfig,
   ToolResult,
-} from "./types.js";
+} from "../types/index.js";
 
 const SKILLS_DIR = join(homedir(), ".config", "openkrow", "skills");
 const REGISTRY_FILE = join(SKILLS_DIR, "registry.json");

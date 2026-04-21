@@ -3,7 +3,7 @@
  * Kept for backward compatibility. New code should use ContextManager directly.
  */
 
-import type { AgentState, AgentMessage, AgentTurn } from "./types.js";
+import type { AgentState, AgentMessage, AgentTurn } from "../types/index.js";
 import { randomUUID } from "node:crypto";
 
 export class ConversationState {

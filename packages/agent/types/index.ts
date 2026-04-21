@@ -1,5 +1,5 @@
 /**
- * @openkrow/agent-core — Type definitions
+ * @openkrow/agent — Type definitions
  *
  * All shared interfaces for the agent runtime: context management,
  * workspace persistence, personality, skills, and the agent itself.

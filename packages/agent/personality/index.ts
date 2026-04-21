@@ -10,7 +10,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import type { IPersonalityManager, UserPersonality } from "./types.js";
+import type { IPersonalityManager, UserPersonality } from "../types/index.js";
 
 const PROFILE_DIR = join(homedir(), ".config", "openkrow", "profile");
 const PERSONALITY_FILE = join(PROFILE_DIR, "personality.json");

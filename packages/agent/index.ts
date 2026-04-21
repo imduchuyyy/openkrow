@@ -1,18 +1,18 @@
 /**
- * @openkrow/agent-core — Agent runtime with context management,
+ * @openkrow/agent — Agent runtime with context management,
  * workspace persistence, personality, skills, and tool calling.
  */
 
 // Core runtime
-export { Agent } from "./agent.js";
-export { ToolRegistry } from "./tools.js";
-export { ContextManager } from "./context.js";
-export { WorkspaceManager } from "./workspace.js";
-export { PersonalityManager } from "./personality.js";
-export { SkillManager } from "./skills.js";
+export { Agent } from "./agent/index.js";
+export { ToolRegistry } from "./tools/index.js";
+export { ContextManager } from "./context/index.js";
+export { WorkspaceManager } from "./workspace/index.js";
+export { PersonalityManager } from "./personality/index.js";
+export { SkillManager } from "./skills/index.js";
 
 // Deprecated — kept for backward compatibility
-export { ConversationState } from "./state.js";
+export { ConversationState } from "./state/index.js";
 
 // Types
 export type {
@@ -46,4 +46,4 @@ export type {
   Skill,
   MCPServerConfig,
   ISkillManager,
-} from "./types.js";
+} from "./types/index.js";

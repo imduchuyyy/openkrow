@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@openkrow/ai";
-import type { Tool as AgentTool, ToolResult } from "./types.js";
+import type { Tool as AgentTool, ToolResult } from "../types/index.js";
 
 /**
  * Registry for managing available tools in an agent.
