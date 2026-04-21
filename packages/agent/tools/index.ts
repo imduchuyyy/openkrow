@@ -1,65 +1,33 @@
-import type { ToolDefinition } from "@openkrow/ai";
-import type { Tool as AgentTool, ToolResult } from "../types/index.js";
-
 /**
- * Registry for managing available tools in an agent.
+ * ToolRegistry — Manages available tools.
  */
-export class ToolRegistry {
-  private tools = new Map<string, AgentTool>();
 
-  register(tool: AgentTool): void {
-    if (this.tools.has(tool.definition.name)) {
-      throw new Error(`Tool "${tool.definition.name}" is already registered`);
-    }
-    this.tools.set(tool.definition.name, tool);
+import type { Tool, ToolResult } from "../types/index.js";
+
+export class ToolRegistry {
+  private tools = new Map<string, Tool>();
+
+  register(tool: Tool): void {
+    this.tools.set(tool.name, tool);
   }
 
   unregister(name: string): void {
     this.tools.delete(name);
   }
 
-  get(name: string): AgentTool | undefined {
+  get(name: string): Tool | undefined {
     return this.tools.get(name);
   }
 
-  has(name: string): boolean {
-    return this.tools.has(name);
-  }
-
-  getDefinitions(): ToolDefinition[] {
-    return Array.from(this.tools.values()).map((t) => t.definition);
-  }
-
-  async execute(
-    name: string,
-    args: Record<string, unknown>
-  ): Promise<ToolResult> {
+  async execute(name: string, args: Record<string, unknown>): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
-      return {
-        success: false,
-        output: "",
-        error: `Tool "${name}" not found`,
-      };
+      return { success: false, output: "", error: `Tool "${name}" not found` };
     }
-
-    try {
-      return await tool.execute(args);
-    } catch (error) {
-      return {
-        success: false,
-        output: "",
-        error:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      };
-    }
+    return tool.execute(args);
   }
 
   list(): string[] {
     return Array.from(this.tools.keys());
-  }
-
-  clear(): void {
-    this.tools.clear();
   }
 }
