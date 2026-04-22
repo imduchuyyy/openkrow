@@ -1,29 +1,96 @@
 /**
- * @openkrow/llm - Unified multi-provider LLM API
+ * @openkrow/llm — Unified multi-provider LLM API
  *
- * Provides a single interface to interact with multiple LLM providers
- * including OpenAI, Anthropic, and Google. Includes smart model routing
- * for primary (user-facing) and background (cheap/fast) tasks.
+ * The LLM package provides a single interface to interact with multiple
+ * LLM providers (Anthropic, OpenAI, Google, xAI, Groq, DeepSeek, etc.).
+ *
+ * Main API:
+ *   stream(model, context, options?)  → AssistantMessageEventStream
+ *   complete(model, context, options?) → Promise<AssistantMessage>
+ *
+ * Tool definitions are passed through to providers but tool call execution
+ * is the agent package's responsibility.
  */
 
-export { LLMClient, createClient } from "./client.js";
-export { ModelRouter, createRouter } from "./router.js";
-export { OpenAIProvider } from "./providers/openai.js";
-export { AnthropicProvider } from "./providers/anthropic.js";
-export { GoogleProvider } from "./providers/google.js";
+// --- Top-level API ---
+export { stream, complete, getTextContent } from "./stream.js";
+
+// --- API Registry ---
+export {
+  registerApiProvider,
+  getApiProvider,
+  hasApiProvider,
+  getRegisteredApis,
+  clearApiProviders,
+} from "./api-registry.js";
+
+// --- Model Registry ---
+export {
+  getModel,
+  getModelById,
+  getModels,
+  getProviders,
+  getAllModels,
+  calculateCost,
+} from "./models.js";
+
+// --- Env API Keys ---
+export { resolveApiKey } from "./env-api-keys.js";
+
+// --- Event Stream ---
+export { EventStream } from "./utils/event-stream.js";
+
+// --- Provider registration (auto-registers on import) ---
+export { registerBuiltInApiProviders } from "./providers/register-builtins.js";
+
+// --- Provider stream functions (for direct use) ---
+export { streamAnthropic } from "./providers/anthropic.js";
+export { streamOpenAICompletions } from "./providers/openai.js";
+export { streamGoogle } from "./providers/google.js";
+
+// --- Types ---
 export type {
-  LLMProvider,
+  // Core
+  KnownApi,
+  KnownProvider,
+  Model,
   LLMConfig,
-  ProviderName,
-  ChatMessage,
-  ChatResponse,
-  ChatOptions,
-  StreamEvent,
+
+  // Messages
+  TextContent,
+  ThinkingContent,
+  ImageContent,
+  ToolCallContent,
+  ContentPart,
+  UserMessage,
+  AssistantMessage,
+  ToolResultMessage,
+  Message,
+
+  // Context & Options
+  Context,
+  StreamOptions,
   ToolDefinition,
-  ToolCall,
-  ModelInfo,
-  IModelRouter,
-  ModelRoutingConfig,
-  ModelEndpoint,
-  BackgroundTask,
+
+  // Events
+  StreamEvent,
+  TextStartEvent,
+  TextDeltaEvent,
+  TextEndEvent,
+  ThinkingStartEvent,
+  ThinkingDeltaEvent,
+  ThinkingEndEvent,
+  ToolCallStartEvent,
+  ToolCallDeltaEvent,
+  ToolCallEndEvent,
+  DoneEvent,
+  ErrorEvent,
+
+  // Usage
+  Usage,
+
+  // Provider
+  ApiProvider,
+  AssistantMessageEventStream,
+  EnvApiKeyMap,
 } from "./types.js";
