@@ -252,9 +252,10 @@ export function streamAnthropic(
             case "message_delta": {
               if (data.usage) {
                 usage = {
-                  inputTokens: 0,
+                  ...usage,
+                  inputTokens: usage?.inputTokens ?? 0,
                   outputTokens: data.usage.output_tokens ?? 0,
-                  totalTokens: data.usage.output_tokens ?? 0,
+                  totalTokens: (usage?.inputTokens ?? 0) + (data.usage.output_tokens ?? 0),
                 };
               }
               break;
