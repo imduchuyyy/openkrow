@@ -1,133 +1,245 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+/**
+ * Google Generative AI provider
+ *
+ * Uses raw fetch + SSE for streaming to avoid SDK dependency issues.
+ */
+
 import type {
-  LLMProvider,
-  LLMConfig,
-  ChatMessage,
-  ChatResponse,
-  ChatOptions,
-  StreamEvent,
-  ModelInfo,
+  Model,
+  Context,
+  StreamOptions,
+  AssistantMessage,
+  ContentPart,
+  Usage,
 } from "../types.js";
+import { EventStream } from "../utils/event-stream.js";
+import { resolveApiKey } from "../env-api-keys.js";
 
-export class GoogleProvider implements LLMProvider {
-  readonly name = "google";
-  private genAI: GoogleGenerativeAI;
-  private model: string;
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
-  constructor(config: LLMConfig) {
-    const apiKey = config.apiKey ?? process.env.GOOGLE_API_KEY ?? "";
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = config.model;
-  }
+interface GeminiContent {
+  role: "user" | "model";
+  parts: Array<{ text?: string; functionCall?: { name: string; args: Record<string, unknown> } }>;
+}
 
-  async chat(
-    messages: ChatMessage[],
-    options?: ChatOptions
-  ): Promise<ChatResponse> {
-    const model = this.genAI.getGenerativeModel({ model: this.model });
+/**
+ * Convert our messages to Gemini format
+ */
+function convertMessages(context: Context): {
+  systemInstruction?: { parts: Array<{ text: string }> };
+  contents: GeminiContent[];
+} {
+  const systemInstruction = context.systemPrompt
+    ? { parts: [{ text: context.systemPrompt }] }
+    : undefined;
 
-    const systemMessage = messages.find((m) => m.role === "system");
-    const history = messages
-      .filter((m) => m.role !== "system")
-      .map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      }));
+  const contents: GeminiContent[] = [];
 
-    const lastMessage = history.pop();
-    if (!lastMessage) {
-      throw new Error("No messages provided");
-    }
-
-    const chat = model.startChat({
-      history,
-      systemInstruction: systemMessage
-        ? { role: "system", parts: [{ text: systemMessage.content }] }
-        : undefined,
-      generationConfig: {
-        temperature: options?.temperature,
-        maxOutputTokens: options?.maxTokens,
-      },
-    });
-
-    const result = await chat.sendMessage(lastMessage.parts);
-    const response = result.response;
-
-    return {
-      id: `google-${Date.now()}`,
-      content: response.text(),
-      role: "assistant",
-      toolCalls: undefined, // TODO: implement tool calls for Google
-      usage: response.usageMetadata
-        ? {
-            promptTokens: response.usageMetadata.promptTokenCount ?? 0,
-            completionTokens:
-              response.usageMetadata.candidatesTokenCount ?? 0,
-            totalTokens: response.usageMetadata.totalTokenCount ?? 0,
-          }
-        : undefined,
-      finishReason: "stop",
-    };
-  }
-
-  async *stream(
-    messages: ChatMessage[],
-    options?: ChatOptions
-  ): AsyncIterable<StreamEvent> {
-    const model = this.genAI.getGenerativeModel({ model: this.model });
-
-    const systemMessage = messages.find((m) => m.role === "system");
-    const history = messages
-      .filter((m) => m.role !== "system")
-      .map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      }));
-
-    const lastMessage = history.pop();
-    if (!lastMessage) {
-      throw new Error("No messages provided");
-    }
-
-    const chat = model.startChat({
-      history,
-      systemInstruction: systemMessage
-        ? { role: "system", parts: [{ text: systemMessage.content }] }
-        : undefined,
-      generationConfig: {
-        temperature: options?.temperature,
-        maxOutputTokens: options?.maxTokens,
-      },
-    });
-
-    const result = await chat.sendMessageStream(lastMessage.parts);
-
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
+  for (const msg of context.messages) {
+    if (msg.role === "user") {
+      const text = typeof msg.content === "string"
+        ? msg.content
+        : msg.content
+            .filter((p) => p.type === "text")
+            .map((p) => (p as { type: "text"; text: string }).text)
+            .join("\n");
+      contents.push({ role: "user", parts: [{ text }] });
+    } else if (msg.role === "assistant") {
+      const text = msg.content
+        .filter((p) => p.type === "text")
+        .map((p) => (p as { type: "text"; text: string }).text)
+        .join("");
       if (text) {
-        yield { type: "text_delta", delta: text };
+        contents.push({ role: "model", parts: [{ text }] });
       }
+    } else if (msg.role === "tool") {
+      // Tool results as user messages for Gemini
+      contents.push({
+        role: "user",
+        parts: [{ text: `Tool result for ${msg.toolCallId}: ${msg.content}` }],
+      });
     }
-
-    yield { type: "done" };
   }
 
-  async listModels(): Promise<ModelInfo[]> {
-    return [
-      {
-        id: "gemini-2.0-flash",
-        provider: "google",
-        contextWindow: 1048576,
-        supportsTools: true,
-        supportsStreaming: true,
-      },
-      {
-        id: "gemini-2.0-pro",
-        provider: "google",
-        contextWindow: 1048576,
-        supportsTools: true,
-        supportsStreaming: true,
-      },
-    ];
+  return { systemInstruction, contents };
+}
+
+/**
+ * Convert tool definitions to Gemini format
+ */
+function convertTools(
+  tools?: Context["tools"]
+): Array<{ functionDeclarations: Array<{ name: string; description: string; parameters: Record<string, unknown> }> }> | undefined {
+  if (!tools || tools.length === 0) return undefined;
+
+  return [
+    {
+      functionDeclarations: tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      })),
+    },
+  ];
+}
+
+/**
+ * Stream from Google Generative AI API
+ */
+export function streamGoogle(
+  model: Model,
+  context: Context,
+  options?: StreamOptions
+): EventStream {
+  const stream = new EventStream();
+
+  const apiKey = options?.apiKey ?? resolveApiKey("google");
+  if (!apiKey) {
+    stream.error(new Error("Google API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY."));
+    return stream;
   }
+
+  const { systemInstruction, contents } = convertMessages(context);
+
+  const body: Record<string, unknown> = {
+    contents,
+    generationConfig: {
+      temperature: options?.temperature,
+      maxOutputTokens: options?.maxTokens ?? model.maxTokens,
+    },
+  };
+
+  if (systemInstruction) body.systemInstruction = systemInstruction;
+
+  const tools = convertTools(context.tools);
+  if (tools) body.tools = tools;
+
+  const url = `${GEMINI_API_URL}/${model.id}:streamGenerateContent?key=${apiKey}&alt=sse`;
+
+  // Start streaming in background
+  (async () => {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+        },
+        body: JSON.stringify(body),
+        signal: options?.signal,
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        stream.error(new Error(`Google API error ${response.status}: ${errorBody}`));
+        return;
+      }
+
+      if (!response.body) {
+        stream.error(new Error("No response body from Google API"));
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const contentParts: ContentPart[] = [];
+      let currentText = "";
+      let textStarted = false;
+      let usage: Usage | undefined;
+
+      while (true) {
+        if (options?.signal?.aborted) break;
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (!data) continue;
+
+          try {
+            const chunk = JSON.parse(data);
+
+            // Extract usage
+            if (chunk.usageMetadata) {
+              usage = {
+                inputTokens: chunk.usageMetadata.promptTokenCount ?? 0,
+                outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
+                totalTokens: chunk.usageMetadata.totalTokenCount ?? 0,
+              };
+            }
+
+            const parts = chunk.candidates?.[0]?.content?.parts;
+            if (!parts) continue;
+
+            for (const part of parts) {
+              if (part.text) {
+                if (!textStarted) {
+                  stream.push({ type: "text_start" });
+                  textStarted = true;
+                }
+                currentText += part.text;
+                stream.push({ type: "text_delta", text: part.text });
+              } else if (part.functionCall) {
+                // End text if started
+                if (textStarted && currentText) {
+                  contentParts.push({ type: "text", text: currentText });
+                  stream.push({ type: "text_end" });
+                  currentText = "";
+                  textStarted = false;
+                }
+
+                const toolCallId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                const args = JSON.stringify(part.functionCall.args ?? {});
+
+                stream.push({
+                  type: "tool_call_start",
+                  id: toolCallId,
+                  name: part.functionCall.name,
+                });
+                stream.push({
+                  type: "tool_call_delta",
+                  arguments: args,
+                });
+                stream.push({ type: "tool_call_end" });
+
+                contentParts.push({
+                  type: "tool_call",
+                  id: toolCallId,
+                  name: part.functionCall.name,
+                  arguments: args,
+                });
+              }
+            }
+          } catch {
+            // Skip unparseable chunks
+          }
+        }
+      }
+
+      // End remaining text
+      if (textStarted && currentText) {
+        contentParts.push({ type: "text", text: currentText });
+        stream.push({ type: "text_end" });
+      }
+
+      const message: AssistantMessage = {
+        role: "assistant",
+        content: contentParts.length > 0 ? contentParts : [{ type: "text", text: "" }],
+        usage,
+      };
+
+      stream.end(message);
+    } catch (err) {
+      stream.error(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  return stream;
 }

@@ -1,45 +1,119 @@
 /**
- * Core types for the unified LLM API.
+ * @openkrow/llm — Core type definitions
+ *
+ * Inspired by pi-mono/packages/ai but simplified:
+ * - Text-only streaming (no tool call processing in this package)
+ * - Tool definitions passed through to providers but results handled by agent
  */
 
-export type ProviderName = "openai" | "anthropic" | "google";
+// ---------------------------------------------------------------------------
+// API & Provider identifiers
+// ---------------------------------------------------------------------------
 
-export interface LLMConfig {
-  provider: ProviderName;
-  apiKey?: string;
-  baseUrl?: string;
-  model: string;
-  maxTokens?: number;
-  temperature?: number;
-}
+/** Known LLM API protocols */
+export type KnownApi =
+  | "openai-completions"
+  | "anthropic-messages"
+  | "google-generative-ai";
 
-export interface ChatMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  toolCallId?: string;
-  toolCalls?: ToolCall[];
-}
+/** Known LLM providers */
+export type KnownProvider =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "xai"
+  | "groq"
+  | "deepseek"
+  | "openrouter";
 
-export interface ChatResponse {
+// ---------------------------------------------------------------------------
+// Model
+// ---------------------------------------------------------------------------
+
+export interface Model<TApi extends KnownApi = KnownApi> {
+  /** Model identifier (e.g. "claude-sonnet-4-20250514") */
   id: string;
-  content: string;
-  role: "assistant";
-  toolCalls?: ToolCall[];
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-  finishReason: "stop" | "tool_calls" | "length" | "error";
+  /** Human-readable name */
+  name: string;
+  /** API protocol this model uses */
+  api: TApi;
+  /** Provider that hosts this model */
+  provider: KnownProvider;
+  /** Base URL override (for custom endpoints) */
+  baseUrl?: string;
+  /** Context window size in tokens */
+  contextWindow: number;
+  /** Maximum output tokens */
+  maxTokens: number;
+  /** Whether the model supports tool/function calling */
+  supportsTools: boolean;
+  /** Whether the model supports extended thinking */
+  supportsThinking: boolean;
+  /** Cost per million input tokens (USD) */
+  inputCostPerMillion?: number;
+  /** Cost per million output tokens (USD) */
+  outputCostPerMillion?: number;
 }
 
-export interface StreamEvent {
-  type: "text_delta" | "tool_call_delta" | "done" | "error";
-  delta?: string;
-  toolCall?: Partial<ToolCall>;
-  response?: ChatResponse;
-  error?: Error;
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+/** Content types within a message */
+export interface TextContent {
+  type: "text";
+  text: string;
 }
+
+export interface ThinkingContent {
+  type: "thinking";
+  text: string;
+}
+
+export interface ImageContent {
+  type: "image";
+  /** Base64-encoded image data */
+  data: string;
+  /** MIME type (e.g. "image/png") */
+  mediaType: string;
+}
+
+export interface ToolCallContent {
+  type: "tool_call";
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export type ContentPart =
+  | TextContent
+  | ThinkingContent
+  | ImageContent
+  | ToolCallContent;
+
+export interface UserMessage {
+  role: "user";
+  content: string | ContentPart[];
+}
+
+export interface AssistantMessage {
+  role: "assistant";
+  content: ContentPart[];
+  usage?: Usage;
+}
+
+export interface ToolResultMessage {
+  role: "tool";
+  toolCallId: string;
+  content: string;
+  isError?: boolean;
+}
+
+export type Message = UserMessage | AssistantMessage | ToolResultMessage;
+
+// ---------------------------------------------------------------------------
+// Tool definitions (passed through to providers, processed by agent)
+// ---------------------------------------------------------------------------
 
 export interface ToolDefinition {
   name: string;
@@ -47,92 +121,165 @@ export interface ToolDefinition {
   parameters: Record<string, unknown>;
 }
 
-export interface ToolCall {
+// ---------------------------------------------------------------------------
+// Context (what gets sent to the LLM)
+// ---------------------------------------------------------------------------
+
+export interface Context {
+  /** System prompt */
+  systemPrompt?: string;
+  /** Conversation messages */
+  messages: Message[];
+  /** Available tools (passed to provider, tool execution is agent's job) */
+  tools?: ToolDefinition[];
+}
+
+// ---------------------------------------------------------------------------
+// Stream options
+// ---------------------------------------------------------------------------
+
+export interface StreamOptions {
+  /** API key override */
+  apiKey?: string;
+  /** Temperature (0-2) */
+  temperature?: number;
+  /** Maximum output tokens */
+  maxTokens?: number;
+  /** AbortSignal for cancellation */
+  signal?: AbortSignal;
+  /** Custom headers */
+  headers?: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
+// Streaming events
+// ---------------------------------------------------------------------------
+
+export interface TextStartEvent {
+  type: "text_start";
+}
+
+export interface TextDeltaEvent {
+  type: "text_delta";
+  text: string;
+}
+
+export interface TextEndEvent {
+  type: "text_end";
+}
+
+export interface ThinkingStartEvent {
+  type: "thinking_start";
+}
+
+export interface ThinkingDeltaEvent {
+  type: "thinking_delta";
+  text: string;
+}
+
+export interface ThinkingEndEvent {
+  type: "thinking_end";
+}
+
+export interface ToolCallStartEvent {
+  type: "tool_call_start";
   id: string;
   name: string;
+}
+
+export interface ToolCallDeltaEvent {
+  type: "tool_call_delta";
   arguments: string;
 }
 
-export interface ModelInfo {
-  id: string;
-  provider: string;
-  contextWindow: number;
-  supportsTools: boolean;
-  supportsStreaming: boolean;
+export interface ToolCallEndEvent {
+  type: "tool_call_end";
 }
 
-/**
- * Common options for chat/stream calls.
- */
-export interface ChatOptions {
-  tools?: ToolDefinition[];
-  temperature?: number;
-  maxTokens?: number;
+export interface DoneEvent {
+  type: "done";
+  message: AssistantMessage;
 }
 
-export interface LLMProvider {
-  readonly name: string;
+export interface ErrorEvent {
+  type: "error";
+  error: Error;
+}
 
-  chat(
-    messages: ChatMessage[],
-    options?: ChatOptions
-  ): Promise<ChatResponse>;
+export type StreamEvent =
+  | TextStartEvent
+  | TextDeltaEvent
+  | TextEndEvent
+  | ThinkingStartEvent
+  | ThinkingDeltaEvent
+  | ThinkingEndEvent
+  | ToolCallStartEvent
+  | ToolCallDeltaEvent
+  | ToolCallEndEvent
+  | DoneEvent
+  | ErrorEvent;
 
-  stream(
-    messages: ChatMessage[],
-    options?: ChatOptions
-  ): AsyncIterable<StreamEvent>;
+// ---------------------------------------------------------------------------
+// Usage
+// ---------------------------------------------------------------------------
 
-  listModels(): Promise<ModelInfo[]>;
+export interface Usage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  cost?: number;
 }
 
 // ---------------------------------------------------------------------------
-// Model Routing
+// API Provider (what each provider module exports)
+// ---------------------------------------------------------------------------
+
+export interface ApiProvider {
+  /** API protocol identifier */
+  api: KnownApi;
+  /** Stream a response from this provider */
+  stream: (
+    model: Model,
+    context: Context,
+    options?: StreamOptions
+  ) => AssistantMessageEventStream;
+}
+
+// ---------------------------------------------------------------------------
+// Event stream (forward declaration — implemented in event-stream.ts)
 // ---------------------------------------------------------------------------
 
 /**
- * Configuration for a single model endpoint (provider + model ID).
+ * An async iterable stream of assistant message events.
+ * Consumers iterate events with `for await...of`.
+ * Call `result()` to get the final AssistantMessage after the stream completes.
  */
-export interface ModelEndpoint {
-  provider: ProviderName;
+export interface AssistantMessageEventStream
+  extends AsyncIterable<StreamEvent> {
+  /** Promise that resolves to the final AssistantMessage when the stream is done */
+  result(): Promise<AssistantMessage>;
+}
+
+// ---------------------------------------------------------------------------
+// Env API key resolution
+// ---------------------------------------------------------------------------
+
+export interface EnvApiKeyMap {
+  provider: KnownProvider;
+  envVars: string[];
+}
+
+// ---------------------------------------------------------------------------
+// LLMConfig (simplified config for quick setup — used by agent)
+// ---------------------------------------------------------------------------
+
+export interface LLMConfig {
+  provider: KnownProvider;
   model: string;
   apiKey?: string;
   baseUrl?: string;
-}
-
-/**
- * Smart routing configuration — maps task categories to model endpoints.
- */
-export interface ModelRoutingConfig {
-  /** Strongest reasoning model for user-facing work. */
-  primary: ModelEndpoint;
-  /** Cheap/fast model for mechanical background tasks. */
-  background: ModelEndpoint;
-}
-
-/**
- * Background tasks that the router can dispatch to the cheap model.
- */
-export type BackgroundTask =
-  | { type: "summarize"; content: string }
-  | { type: "extract_personality"; conversations: string[] }
-  | { type: "generate_title"; firstMessage: string }
-  | { type: "generate_context"; fileTree: string; readme: string };
-
-/**
- * High-level router interface that sits above individual LLMProviders.
- * The agent uses this instead of LLMClient directly.
- */
-export interface IModelRouter {
-  /** Send a chat request routed to the primary model. */
-  chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse>;
-
-  /** Stream a response from the primary model. */
-  stream(messages: ChatMessage[], options?: ChatOptions): AsyncIterable<StreamEvent>;
-
-  /** Execute a background task using the cheap/fast model. */
-  background(task: BackgroundTask): Promise<string>;
-
-  /** Get the routing configuration. */
-  getConfig(): ModelRoutingConfig;
+  maxTokens?: number;
+  temperature?: number;
 }
