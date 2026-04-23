@@ -181,7 +181,16 @@ export interface CompactionAction {
 // ---------------------------------------------------------------------------
 
 export interface AgentEvents {
+  /** Emitted when a complete message is added to the conversation */
   message: (message: Message) => void;
+  /** Emitted for each text delta during streaming */
+  text_delta: (text: string) => void;
+  /** Emitted when the LLM requests a tool call */
+  tool_call: (toolCall: { id: string; name: string; arguments: string }) => void;
+  /** Emitted when a tool execution completes */
+  tool_result: (result: { toolCallId: string; toolName: string; success: boolean; output: string }) => void;
+  /** Emitted on errors (non-fatal, the loop may continue) */
   error: (error: Error) => void;
+  /** Emitted when the agent finishes processing */
   done: () => void;
 }
