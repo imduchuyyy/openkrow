@@ -17,8 +17,8 @@ export class ConversationState {
     this._isRunning = running;
   }
 
-  addMessage(message: Omit<Message, "timestamp">): Message {
-    const full: Message = { ...message, timestamp: Date.now() };
+  addMessage(message: Omit<Message, "timestamp"> & { timestamp?: number }): Message {
+    const full = { ...message, timestamp: message.timestamp ?? Date.now() } as Message;
     this.messages.push(full);
     return full;
   }

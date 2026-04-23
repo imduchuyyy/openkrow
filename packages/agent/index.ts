@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from "eventemitter3";
-import type { AgentConfig, AgentEvents, Message } from "./types/index.js";
+import type { AgentConfig, AgentEvents, Message, UserMessage, AssistantMessage } from "./types/index.js";
 import { ToolRegistry } from "./tools/index.js";
 import { ContextManager } from "./context/index.js";
 
@@ -37,6 +37,18 @@ export class Agent extends EventEmitter<AgentEvents> {
     return this._isRunning;
   }
 
+  /** Persist a message to the database if configured */
+  private persistMessage(role: "user" | "assistant" | "system", content: string): void {
+    const { database, conversationId } = this.config;
+    if (database && conversationId) {
+      database.messages.create({
+        conversation_id: conversationId,
+        role,
+        content,
+      });
+    }
+  }
+
   /**
    * Run a single prompt and return the full response.
    */
@@ -46,12 +58,20 @@ export class Agent extends EventEmitter<AgentEvents> {
     }
 
     this._isRunning = true;
-    this.context.addMessage({ role: "user", content: input });
+
+    const userMsg: Omit<UserMessage, "timestamp"> = { role: "user", content: input };
+    this.context.addMessage(userMsg);
+    this.persistMessage("user", input);
 
     try {
       // Placeholder: in real implementation, call LLM here
       const response = `Received: ${input}`;
-      const msg = this.context.addMessage({ role: "assistant", content: response });
+      const assistantMsg: Omit<AssistantMessage, "timestamp"> = {
+        role: "assistant",
+        content: [{ type: "text", text: response }],
+      };
+      const msg = this.context.addMessage(assistantMsg);
+      this.persistMessage("assistant", response);
       this.emit("message", msg);
       return response;
     } finally {
@@ -69,15 +89,21 @@ export class Agent extends EventEmitter<AgentEvents> {
     }
 
     this._isRunning = true;
-    this.context.addMessage({ role: "user", content: input });
+
+    const userMsg: Omit<UserMessage, "timestamp"> = { role: "user", content: input };
+    this.context.addMessage(userMsg);
+    this.persistMessage("user", input);
 
     try {
       // Placeholder: simulate streaming response
       const words = `Streaming response for: ${input}`.split(" ");
+      let fullResponse = "";
       for (const word of words) {
+        fullResponse += word + " ";
         yield word + " ";
         await new Promise((r) => setTimeout(r, 50));
       }
+      this.persistMessage("assistant", fullResponse.trim());
     } finally {
       this._isRunning = false;
       this.emit("done");
@@ -101,7 +127,20 @@ export type {
   ToolDefinition,
   ToolResult,
   Message,
+  UserMessage,
+  AssistantMessage,
+  ToolResultMessage,
+  SnipMarker,
+  SummaryBoundary,
+  SendableMessage,
+  ContextAssemblyOptions,
+  ContextAssemblyResult,
+  CompactionAction,
+  DatabaseClient,
 } from "./types/index.js";
+
+// Re-export token utilities
+export { estimateTokens, estimateMessageTokens, estimateTotalTokens } from "./context/index.js";
 
 export type { UserPersonality } from "./personality/index.js";
 export type { WorkspaceContext } from "./workspace/index.js";

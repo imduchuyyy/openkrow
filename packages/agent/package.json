@@ -15,9 +15,11 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test dist/__tests__/*.test.js"
   },
   "dependencies": {
+    "@openkrow/database": "*",
     "@openkrow/llm": "*",
     "eventemitter3": "^5.0.1"
   },
