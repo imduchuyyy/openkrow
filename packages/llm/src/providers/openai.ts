@@ -13,7 +13,8 @@ import type {
   Usage,
 } from "../types.js";
 import { EventStream } from "../utils/event-stream.js";
-import { resolveApiKey } from "../env-api-keys.js";
+import { resolveCredentials } from "../resolve-credentials.js";
+import { buildCopilotHeaders } from "../utils/oauth/github-copilot.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -138,14 +139,6 @@ export function streamOpenAICompletions(
 ): EventStream {
   const stream = new EventStream();
 
-  const apiKey = options?.apiKey ?? resolveApiKey(model.provider);
-  if (!apiKey) {
-    stream.error(
-      new Error(`API key not found for provider "${model.provider}". Set the appropriate env var.`)
-    );
-    return stream;
-  }
-
   const messages = convertMessages(context);
 
   const body: Record<string, unknown> = {
@@ -168,13 +161,35 @@ export function streamOpenAICompletions(
   // Start streaming in background
   (async () => {
     try {
+      const resolved = await resolveCredentials(model.provider, options);
+      if (!resolved) {
+        stream.error(
+          new Error(`API key not found for provider "${model.provider}". Pass apiKey or oauthCredentials in options.`)
+        );
+        return;
+      }
+
+      // Build headers — inject Copilot-specific headers when needed
+      const requestHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resolved.apiKey}`,
+      };
+
+      if (model.provider === "github-copilot") {
+        Object.assign(requestHeaders, buildCopilotHeaders(messages));
+      }
+
+      if (resolved.extraHeaders) {
+        Object.assign(requestHeaders, resolved.extraHeaders);
+      }
+
+      if (options?.headers) {
+        Object.assign(requestHeaders, options.headers);
+      }
+
       const response = await fetch(baseUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          ...options?.headers,
-        },
+        headers: requestHeaders,
         body: JSON.stringify(body),
         signal: options?.signal,
       });

@@ -14,7 +14,7 @@ import type {
   Usage,
 } from "../types.js";
 import { EventStream } from "../utils/event-stream.js";
-import { resolveApiKey } from "../env-api-keys.js";
+import { resolveCredentials } from "../resolve-credentials.js";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -131,12 +131,6 @@ export function streamAnthropic(
 ): EventStream {
   const stream = new EventStream();
 
-  const apiKey = options?.apiKey ?? resolveApiKey("anthropic");
-  if (!apiKey) {
-    stream.error(new Error("Anthropic API key not found. Set ANTHROPIC_API_KEY."));
-    return stream;
-  }
-
   const { system, messages } = convertMessages(context);
 
   const body: Record<string, unknown> = {
@@ -157,12 +151,19 @@ export function streamAnthropic(
   // Start streaming in background
   (async () => {
     try {
+      const resolved = await resolveCredentials(model.provider, options);
+      if (!resolved) {
+        stream.error(new Error("Anthropic API key not found. Pass apiKey or oauthCredentials in options."));
+        return;
+      }
+
       const response = await fetch(baseUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": apiKey,
+          "x-api-key": resolved.apiKey,
           "anthropic-version": ANTHROPIC_VERSION,
+          ...resolved.extraHeaders,
           ...options?.headers,
         },
         body: JSON.stringify(body),
@@ -251,9 +252,10 @@ export function streamAnthropic(
             case "message_delta": {
               if (data.usage) {
                 usage = {
-                  inputTokens: 0,
+                  ...usage,
+                  inputTokens: usage?.inputTokens ?? 0,
                   outputTokens: data.usage.output_tokens ?? 0,
-                  totalTokens: data.usage.output_tokens ?? 0,
+                  totalTokens: (usage?.inputTokens ?? 0) + (data.usage.output_tokens ?? 0),
                 };
               }
               break;
