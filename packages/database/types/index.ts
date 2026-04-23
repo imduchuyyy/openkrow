@@ -39,9 +39,13 @@ export interface Conversation {
 export interface Message {
   id: string;
   conversation_id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool" | "snip" | "summary";
   content: string;
   tool_calls?: string;
+  tool_call_id?: string;
+  tool_name?: string;
+  is_error?: number;
+  metadata?: string;
   created_at: string;
 }
 
@@ -88,9 +92,13 @@ export interface UpdateConversationInput {
 
 export interface CreateMessageInput {
   conversation_id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "tool" | "snip" | "summary";
   content: string;
   tool_calls?: Record<string, unknown>[];
+  tool_call_id?: string;
+  tool_name?: string;
+  is_error?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface IUserRepository {

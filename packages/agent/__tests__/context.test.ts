@@ -11,6 +11,7 @@ import type {
   ToolResultMessage,
   ContextAssemblyOptions,
 } from "../types/index.js";
+import type { DatabaseClient, CreateMessageInput, Message as DbMessage } from "@openkrow/database";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -242,5 +243,172 @@ describe("estimateTokens", () => {
 
   it("should return 0 for empty string", () => {
     assert.equal(estimateTokens(""), 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mock DatabaseClient for persistence tests
+// ---------------------------------------------------------------------------
+
+function createMockDatabaseClient(): { client: DatabaseClient; store: DbMessage[] } {
+  const store: DbMessage[] = [];
+  let idCounter = 0;
+
+  const mockMessages = {
+    create(input: CreateMessageInput): DbMessage {
+      const msg: DbMessage = {
+        id: `msg_${++idCounter}`,
+        conversation_id: input.conversation_id,
+        role: input.role,
+        content: input.content,
+        tool_calls: input.tool_calls ? JSON.stringify(input.tool_calls) : undefined,
+        tool_call_id: input.tool_call_id,
+        tool_name: input.tool_name,
+        is_error: input.is_error ? 1 : 0,
+        metadata: input.metadata ? JSON.stringify(input.metadata) : undefined,
+        created_at: new Date().toISOString(),
+      };
+      store.push(msg);
+      return msg;
+    },
+    findByConversationId(conversationId: string, _limit?: number): DbMessage[] {
+      return store.filter(m => m.conversation_id === conversationId);
+    },
+    findById(_id: string): DbMessage | null { return null; },
+    findAll(): DbMessage[] { return store; },
+    deleteById(_id: string): boolean { return false; },
+    count(): number { return store.length; },
+    getLastMessages(_cid: string, _n: number): DbMessage[] { return []; },
+    countByConversationId(_cid: string): number { return 0; },
+    deleteByConversationId(_cid: string): number { return 0; },
+    searchByContent(_q: string): DbMessage[] { return []; },
+  };
+
+  const client = {
+    messages: mockMessages,
+    users: {} as DatabaseClient["users"],
+    sessions: {} as DatabaseClient["sessions"],
+    conversations: {} as DatabaseClient["conversations"],
+    settings: {} as DatabaseClient["settings"],
+  };
+
+  return { client, store };
+}
+
+// ---------------------------------------------------------------------------
+// Persistence tests
+// ---------------------------------------------------------------------------
+
+describe("ContextManager — persistence", () => {
+  it("should persist user messages to database", () => {
+    const { client, store } = createMockDatabaseClient();
+    const cm = new ContextManager({ database: client, conversationId: "conv_1" });
+
+    cm.addMessage(makeUserMsg("Hello from persistence test"));
+
+    assert.equal(store.length, 1);
+    assert.equal(store[0]!.role, "user");
+    assert.equal(store[0]!.content, "Hello from persistence test");
+    assert.equal(store[0]!.conversation_id, "conv_1");
+  });
+
+  it("should persist assistant messages with tool calls", () => {
+    const { client, store } = createMockDatabaseClient();
+    const cm = new ContextManager({ database: client, conversationId: "conv_1" });
+
+    const msg: Omit<AssistantMessage, "timestamp"> = {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Let me read that file" },
+        { type: "tool_call", id: "tc_1", name: "read_file", arguments: '{"path":"foo.txt"}' },
+      ],
+    };
+    cm.addMessage(msg);
+
+    assert.equal(store.length, 1);
+    assert.equal(store[0]!.role, "assistant");
+    assert.equal(store[0]!.content, "Let me read that file");
+    assert.ok(store[0]!.tool_calls);
+    const calls = JSON.parse(store[0]!.tool_calls!);
+    assert.equal(calls[0].name, "read_file");
+  });
+
+  it("should persist tool result messages", () => {
+    const { client, store } = createMockDatabaseClient();
+    const cm = new ContextManager({ database: client, conversationId: "conv_1" });
+
+    cm.addMessage(makeToolResult("file contents here", "tc_1", "read_file"));
+
+    assert.equal(store.length, 1);
+    assert.equal(store[0]!.role, "tool");
+    assert.equal(store[0]!.tool_call_id, "tc_1");
+    assert.equal(store[0]!.tool_name, "read_file");
+  });
+
+  it("should not persist when no database configured", () => {
+    const cm = new ContextManager();
+    cm.addMessage(makeUserMsg("no persistence"));
+    // No error, message stored in memory only
+    assert.equal(cm.getMessages().length, 1);
+  });
+
+  it("should load messages from database during contextAssembly", () => {
+    const { client, store } = createMockDatabaseClient();
+
+    // Simulate messages already in the database (from a previous session)
+    store.push({
+      id: "msg_prev_1",
+      conversation_id: "conv_1",
+      role: "user",
+      content: "Previous message from earlier session",
+      created_at: new Date(Date.now() - 60000).toISOString(),
+    });
+    store.push({
+      id: "msg_prev_2",
+      conversation_id: "conv_1",
+      role: "assistant",
+      content: "Previous response",
+      created_at: new Date(Date.now() - 59000).toISOString(),
+    });
+
+    const cm = new ContextManager({ database: client, conversationId: "conv_1" });
+    cm.setCustomPrompt("test");
+
+    // Add a new message
+    cm.addMessage(makeUserMsg("New message"));
+
+    // contextAssembly should load all messages from DB (including the previous ones)
+    const result = cm.contextAssembly(defaultOptions);
+
+    // Should have 3 messages: 2 from DB + 1 new (which was also persisted to DB)
+    assert.equal(result.messages.length, 3);
+    assert.equal((result.messages[0]!.content as string), "Previous message from earlier session");
+  });
+
+  it("should load tool messages from database correctly", () => {
+    const { client, store } = createMockDatabaseClient();
+
+    store.push({
+      id: "msg_t1",
+      conversation_id: "conv_1",
+      role: "tool",
+      content: "file contents",
+      tool_call_id: "tc_99",
+      tool_name: "read_file",
+      is_error: 0,
+      created_at: new Date().toISOString(),
+    });
+
+    const cm = new ContextManager({ database: client, conversationId: "conv_1" });
+    cm.setCustomPrompt("test");
+
+    const result = cm.contextAssembly(defaultOptions);
+    assert.equal(result.messages.length, 1);
+    const toolMsg = result.messages[0]!;
+    assert.equal(toolMsg.role, "tool");
+    if (toolMsg.role === "tool") {
+      assert.equal(toolMsg.toolCallId, "tc_99");
+      assert.equal(toolMsg.toolName, "read_file");
+    }
   });
 });

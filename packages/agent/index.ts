@@ -26,9 +26,14 @@ export class Agent extends EventEmitter<AgentEvents> {
     super();
     this.config = config;
     this.tools = new ToolRegistry();
-    this.context = new ContextManager();
 
-    // Configure prompt assembly — the ContextManager owns the system prompt
+    // ContextManager owns persistence — pass database + conversationId
+    this.context = new ContextManager({
+      database: config.database,
+      conversationId: config.conversationId,
+    });
+
+    // Configure prompt assembly
     if (config.customPrompt) {
       this.context.setCustomPrompt(config.customPrompt);
     } else {
@@ -43,18 +48,6 @@ export class Agent extends EventEmitter<AgentEvents> {
     return this._isRunning;
   }
 
-  /** Persist a message to the database if configured */
-  private persistMessage(role: "user" | "assistant" | "system", content: string): void {
-    const { database, conversationId } = this.config;
-    if (database && conversationId) {
-      database.messages.create({
-        conversation_id: conversationId,
-        role,
-        content,
-      });
-    }
-  }
-
   /**
    * Run a single prompt and return the full response.
    */
@@ -67,7 +60,6 @@ export class Agent extends EventEmitter<AgentEvents> {
 
     const userMsg: Omit<UserMessage, "timestamp"> = { role: "user", content: input };
     this.context.addMessage(userMsg);
-    this.persistMessage("user", input);
 
     try {
       // Placeholder: in real implementation, call LLM here
@@ -77,7 +69,6 @@ export class Agent extends EventEmitter<AgentEvents> {
         content: [{ type: "text", text: response }],
       };
       const msg = this.context.addMessage(assistantMsg);
-      this.persistMessage("assistant", response);
       this.emit("message", msg);
       return response;
     } finally {
@@ -98,7 +89,6 @@ export class Agent extends EventEmitter<AgentEvents> {
 
     const userMsg: Omit<UserMessage, "timestamp"> = { role: "user", content: input };
     this.context.addMessage(userMsg);
-    this.persistMessage("user", input);
 
     try {
       // Placeholder: simulate streaming response
@@ -109,7 +99,12 @@ export class Agent extends EventEmitter<AgentEvents> {
         yield word + " ";
         await new Promise((r) => setTimeout(r, 50));
       }
-      this.persistMessage("assistant", fullResponse.trim());
+      // Persist the final assistant message
+      const assistantMsg: Omit<AssistantMessage, "timestamp"> = {
+        role: "assistant",
+        content: [{ type: "text", text: fullResponse.trim() }],
+      };
+      this.context.addMessage(assistantMsg);
     } finally {
       this._isRunning = false;
       this.emit("done");
@@ -120,6 +115,7 @@ export class Agent extends EventEmitter<AgentEvents> {
 // Re-export supporting classes
 export { ToolRegistry } from "./tools/index.js";
 export { ContextManager } from "./context/index.js";
+export type { ContextManagerOptions } from "./context/index.js";
 export { ConversationState } from "./state/index.js";
 export { PersonalityManager } from "./personality/index.js";
 export { WorkspaceManager } from "./workspace/index.js";

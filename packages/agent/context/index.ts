@@ -1,20 +1,25 @@
 /**
  * ContextManager — Manages conversation context and assembles it for LLM calls.
  *
- * The `contextAssembly()` method is the core of this module. It applies up to 5
- * compaction mechanisms in order to fit the conversation into the model's context
- * window while minimizing information loss.
+ * When a DatabaseClient + conversationId are provided, messages are persisted
+ * to the database on addMessage() and loaded from the database during
+ * contextAssembly(). This makes the ContextManager the single source of truth
+ * for conversation state.
  *
- * Compaction pipeline (applied in order, each only if still over budget):
+ * The `contextAssembly()` method applies up to 5 compaction mechanisms in order
+ * to fit the conversation into the model's context window:
  *   1. Tool Result Budget — trim oversized individual tool results
- *   2. Snip Compact — drop oldest message blocks entirely (cheapest, most aggressive)
+ *   2. Snip Compact — drop oldest message blocks entirely
  *   3. Microcompact — selectively clear stale tool outputs
- *   4. Context Collapse — create summarized read-time projections of collapsible blocks
- *   5. Auto-Compaction — LLM-generated summary of entire history (most expensive, last resort)
+ *   4. Context Collapse — summarize collapsible blocks at read time
+ *   5. Auto-Compaction — LLM-generated summary (placeholder)
  *
- * IMPORTANT: The original messages array is NEVER mutated during assembly.
- * All compaction produces a new array of projected messages for sending.
+ * IMPORTANT: The original messages are NEVER mutated during assembly.
  */
+
+import type { ContentPart } from "@openkrow/llm";
+import type { DatabaseClient } from "@openkrow/database";
+import type { Message as DbMessage } from "@openkrow/database";
 
 import type {
   Message,
@@ -44,51 +49,74 @@ import { assembleSystemPrompt, type PromptAssemblyOptions } from "./prompt.js";
 
 const DEFAULT_RESERVED_BUFFER = 20_000;
 const DEFAULT_TOOL_RESULT_BUDGET = 10_000;
-/** Minimum number of recent messages to always keep (never snip these) */
 const MIN_RECENT_MESSAGES = 4;
-/** Tool results older than this many messages are candidates for microcompact */
 const MICROCOMPACT_STALENESS_THRESHOLD = 10;
-/** Minimum consecutive tool messages to be considered a collapsible block */
 const COLLAPSE_MIN_BLOCK_SIZE = 3;
 
 // ---------------------------------------------------------------------------
 // ContextManager class
 // ---------------------------------------------------------------------------
 
+export interface ContextManagerOptions {
+  database?: DatabaseClient;
+  conversationId?: string;
+}
+
 export class ContextManager {
   private messages: Message[] = [];
   private promptOptions: PromptAssemblyOptions = {};
   private customPromptOverride: string | undefined;
+  private database: DatabaseClient | undefined;
+  private conversationId: string | undefined;
+
+  constructor(options?: ContextManagerOptions) {
+    this.database = options?.database;
+    this.conversationId = options?.conversationId;
+  }
+
+  // ---- Persistence configuration ----
+
+  /**
+   * Set or update the database client and conversation ID.
+   */
+  configure(options: ContextManagerOptions): void {
+    if (options.database !== undefined) this.database = options.database;
+    if (options.conversationId !== undefined) this.conversationId = options.conversationId;
+  }
+
+  get isPersistedMode(): boolean {
+    return this.database !== undefined && this.conversationId !== undefined;
+  }
 
   // ---- Prompt management ----
 
-  /**
-   * Configure prompt assembly options. The system prompt is built internally
-   * from prompt templates based on provider, tools, and user context.
-   */
   configurePrompt(options: PromptAssemblyOptions): void {
     this.promptOptions = { ...this.promptOptions, ...options };
   }
 
-  /**
-   * Override the assembled prompt with a fully custom system prompt.
-   * When set, the prompt assembly pipeline is bypassed entirely.
-   */
   setCustomPrompt(prompt: string | undefined): void {
     this.customPromptOverride = prompt;
   }
 
-  /**
-   * Get the current system prompt (assembled or custom override).
-   */
   getSystemPrompt(): string {
     if (this.customPromptOverride !== undefined) return this.customPromptOverride;
     return assembleSystemPrompt(this.promptOptions);
   }
 
+  // ---- Message management ----
+
+  /**
+   * Add a message to the conversation. When a database is configured,
+   * the message is persisted automatically.
+   */
   addMessage(message: Omit<Message, "timestamp"> & { timestamp?: number }): Message {
     const full = { ...message, timestamp: message.timestamp ?? Date.now() } as Message;
     this.messages.push(full);
+
+    if (this.isPersistedMode) {
+      this.persistMessage(full);
+    }
+
     return full;
   }
 
@@ -103,8 +131,12 @@ export class ContextManager {
   // ---- Context Assembly ----
 
   /**
-   * Assemble the current conversation into a context that fits within the model's
-   * token budget. Returns projected messages (never mutates internal state).
+   * Assemble the current conversation into a context that fits within the
+   * model's token budget.
+   *
+   * When a database is configured, messages are loaded from the database
+   * first to ensure we have the complete conversation history (including
+   * messages from previous sessions or other agents).
    */
   contextAssembly(options: ContextAssemblyOptions): ContextAssemblyResult {
     const {
@@ -115,12 +147,15 @@ export class ContextManager {
       toolResultBudget = DEFAULT_TOOL_RESULT_BUDGET,
     } = options;
 
-    // Update prompt options with tool awareness
+    // Load messages from database if configured
+    if (this.isPersistedMode) {
+      this.loadMessagesFromDatabase();
+    }
+
     if (tools.length > 0) {
       this.promptOptions.hasTools = true;
     }
 
-    // System prompt is assembled internally
     const systemPrompt = this.getSystemPrompt();
     const systemTokens = systemPrompt ? estimateTokens(systemPrompt) : 0;
     const toolTokens = estimateToolDefinitionTokens(tools);
@@ -128,8 +163,6 @@ export class ContextManager {
 
     const compactions: CompactionAction[] = [];
 
-    // Start with only sendable messages (filter out snip/summary markers from history,
-    // but include summary content as user messages)
     let projected = this.projectSendableMessages();
 
     // Phase 1: Tool Result Budget
@@ -139,7 +172,6 @@ export class ContextManager {
       compactions.push({ type: "tool_result_trim", tokensFreed: phase1.tokensFreed, detail: `Trimmed ${phase1.trimCount} tool results` });
     }
 
-    // Check if we're within budget
     let totalTokens = estimateTotalTokens(projected);
     if (totalTokens <= effectiveBudget) {
       return { messages: projected, systemPrompt, estimatedTokens: totalTokens + systemTokens + toolTokens, compactions };
@@ -150,7 +182,6 @@ export class ContextManager {
     projected = phase2.messages;
     if (phase2.tokensFreed > 0) {
       compactions.push({ type: "snip", tokensFreed: phase2.tokensFreed, detail: `Dropped ${phase2.droppedCount} messages` });
-      // Also insert a snip marker into the real message history
       this.insertSnipMarker(phase2.droppedCount, phase2.tokensFreed);
     }
 
@@ -183,8 +214,7 @@ export class ContextManager {
       return { messages: projected, systemPrompt, estimatedTokens: totalTokens + systemTokens + toolTokens, compactions };
     }
 
-    // Phase 5: Auto-Compaction (placeholder — requires LLM call)
-    // For now, we do an aggressive snip of the oldest half of remaining messages
+    // Phase 5: Auto-Compaction
     const phase5 = this.applyAutoCompaction(projected, totalTokens, effectiveBudget);
     projected = phase5.messages;
     if (phase5.tokensFreed > 0) {
@@ -195,12 +225,157 @@ export class ContextManager {
     return { messages: projected, systemPrompt, estimatedTokens: totalTokens + systemTokens + toolTokens, compactions };
   }
 
-  // ---- Internal: project sendable messages ----
+  // ---- Database persistence ----
 
   /**
-   * Convert internal message history into sendable messages.
-   * SnipMarkers are dropped. SummaryBoundaries are converted to user messages.
+   * Persist a single agent message to the database.
    */
+  private persistMessage(msg: Message): void {
+    const db = this.database!;
+    const conversationId = this.conversationId!;
+
+    switch (msg.role) {
+      case "user": {
+        const content = typeof msg.content === "string"
+          ? msg.content
+          : msg.content.map(p => p.type === "text" ? p.text : `[${p.type}]`).join("\n");
+        db.messages.create({
+          conversation_id: conversationId,
+          role: "user",
+          content,
+        });
+        break;
+      }
+      case "assistant": {
+        const textParts = msg.content.filter(p => p.type === "text");
+        const textContent = textParts.map(p => (p as { type: "text"; text: string }).text).join("\n");
+        const toolCallParts = msg.content.filter(p => p.type === "tool_call");
+        db.messages.create({
+          conversation_id: conversationId,
+          role: "assistant",
+          content: textContent,
+          tool_calls: toolCallParts.length > 0
+            ? toolCallParts.map(p => {
+                const tc = p as { type: "tool_call"; id: string; name: string; arguments: string };
+                return { id: tc.id, name: tc.name, arguments: tc.arguments };
+              })
+            : undefined,
+        });
+        break;
+      }
+      case "tool": {
+        db.messages.create({
+          conversation_id: conversationId,
+          role: "tool",
+          content: msg.content,
+          tool_call_id: msg.toolCallId,
+          tool_name: msg.toolName,
+          is_error: msg.isError,
+        });
+        break;
+      }
+      case "snip": {
+        db.messages.create({
+          conversation_id: conversationId,
+          role: "snip",
+          content: "",
+          metadata: { droppedCount: msg.droppedCount, tokensFreed: msg.tokensFreed },
+        });
+        break;
+      }
+      case "summary": {
+        db.messages.create({
+          conversation_id: conversationId,
+          role: "summary",
+          content: msg.content,
+          metadata: { summarizedCount: msg.summarizedCount, tokensFreed: msg.tokensFreed },
+        });
+        break;
+      }
+    }
+  }
+
+  /**
+   * Load all messages from the database for the current conversation
+   * and replace the in-memory messages array.
+   */
+  private loadMessagesFromDatabase(): void {
+    const db = this.database!;
+    const conversationId = this.conversationId!;
+
+    const dbMessages = db.messages.findByConversationId(conversationId);
+    this.messages = dbMessages.map(row => this.dbRowToAgentMessage(row));
+  }
+
+  /**
+   * Convert a database Message row to an agent Message.
+   */
+  private dbRowToAgentMessage(row: DbMessage): Message {
+    const timestamp = new Date(row.created_at).getTime();
+
+    switch (row.role) {
+      case "user":
+        return { role: "user", content: row.content, timestamp } satisfies UserMessage;
+
+      case "assistant": {
+        const parts: ContentPart[] = [];
+        if (row.content) {
+          parts.push({ type: "text", text: row.content });
+        }
+        if (row.tool_calls) {
+          try {
+            const calls = JSON.parse(row.tool_calls) as Array<{ id: string; name: string; arguments: string }>;
+            for (const tc of calls) {
+              parts.push({ type: "tool_call", id: tc.id, name: tc.name, arguments: tc.arguments });
+            }
+          } catch {
+            // Ignore malformed tool_calls
+          }
+        }
+        return { role: "assistant", content: parts, timestamp } satisfies AssistantMessage;
+      }
+
+      case "tool":
+        return {
+          role: "tool",
+          toolCallId: row.tool_call_id ?? "",
+          toolName: row.tool_name ?? "unknown",
+          content: row.content,
+          isError: row.is_error === 1,
+          timestamp,
+        } satisfies ToolResultMessage;
+
+      case "snip": {
+        const meta = row.metadata ? JSON.parse(row.metadata) as { droppedCount: number; tokensFreed: number } : { droppedCount: 0, tokensFreed: 0 };
+        return {
+          role: "snip",
+          droppedCount: meta.droppedCount,
+          tokensFreed: meta.tokensFreed,
+          timestamp,
+        } satisfies SnipMarker;
+      }
+
+      case "summary": {
+        const meta = row.metadata ? JSON.parse(row.metadata) as { summarizedCount: number; tokensFreed: number } : { summarizedCount: 0, tokensFreed: 0 };
+        return {
+          role: "summary",
+          content: row.content,
+          summarizedCount: meta.summarizedCount,
+          tokensFreed: meta.tokensFreed,
+          timestamp,
+        } satisfies SummaryBoundary;
+      }
+
+      case "system":
+        return { role: "user", content: row.content, timestamp } satisfies UserMessage;
+
+      default:
+        return { role: "user", content: row.content, timestamp } satisfies UserMessage;
+    }
+  }
+
+  // ---- Internal: project sendable messages ----
+
   private projectSendableMessages(): SendableMessage[] {
     const result: SendableMessage[] = [];
     for (const msg of this.messages) {
@@ -232,8 +407,7 @@ export class ContextManager {
       const tokens = estimateTokens(msg.content);
       if (tokens <= budget) return msg;
 
-      // Trim to budget: keep first and last portions
-      const charBudget = budget * 4; // reverse the chars/4 heuristic
+      const charBudget = budget * 4;
       const headSize = Math.floor(charBudget * 0.7);
       const tailSize = Math.floor(charBudget * 0.2);
       const head = msg.content.slice(0, headSize);
@@ -258,8 +432,6 @@ export class ContextManager {
     const excess = currentTokens - budget;
     if (excess <= 0) return { messages, tokensFreed: 0, droppedCount: 0 };
 
-    // Drop messages from the front until we've freed enough tokens,
-    // but always keep at least MIN_RECENT_MESSAGES from the end
     const maxDroppable = Math.max(0, messages.length - MIN_RECENT_MESSAGES);
     let freed = 0;
     let dropCount = 0;
@@ -294,7 +466,6 @@ export class ContextManager {
       if (freed >= excess) return msg;
       if (msg.role !== "tool") return msg;
 
-      // Only clear stale tool results (far from the end of the conversation)
       const distanceFromEnd = totalMessages - i;
       if (distanceFromEnd < MICROCOMPACT_STALENESS_THRESHOLD) return msg;
 
@@ -319,14 +490,12 @@ export class ContextManager {
     const excess = currentTokens - budget;
     if (excess <= 0) return { messages, tokensFreed: 0, collapsedBlocks: 0 };
 
-    // Find consecutive tool result blocks and collapse them into summaries
     let freed = 0;
     let collapsedBlocks = 0;
     const result: SendableMessage[] = [];
     let i = 0;
 
     while (i < messages.length) {
-      // Look for consecutive tool results
       if (messages[i]!.role === "tool" && freed < excess) {
         let blockEnd = i;
         while (blockEnd < messages.length && messages[blockEnd]!.role === "tool") {
@@ -335,7 +504,6 @@ export class ContextManager {
         const blockSize = blockEnd - i;
 
         if (blockSize >= COLLAPSE_MIN_BLOCK_SIZE) {
-          // Collapse this block: summarize tool names and replace with a single user message
           const block = messages.slice(i, blockEnd) as ToolResultMessage[];
           const blockTokens = block.reduce((s, m) => s + estimateMessageTokens(m), 0);
           const toolNames = block.map(m => m.toolName);
@@ -345,7 +513,6 @@ export class ContextManager {
           freed += blockTokens - summaryTokens;
           collapsedBlocks++;
 
-          // Insert as a tool result that preserves the first toolCallId
           result.push({
             role: "tool",
             toolCallId: block[0]!.toolCallId,
@@ -366,14 +533,6 @@ export class ContextManager {
 
   // ---- Phase 5: Auto-Compaction ----
 
-  /**
-   * Last resort compaction. In the full implementation, this sends the history
-   * to the LLM for summarization. For now, we do an aggressive snip of the
-   * oldest half and insert a placeholder summary.
-   *
-   * TODO: Replace with actual LLM-based summarization when the agent's run()
-   * loop is implemented.
-   */
   private applyAutoCompaction(
     messages: SendableMessage[],
     currentTokens: number,
@@ -382,7 +541,6 @@ export class ContextManager {
     const excess = currentTokens - budget;
     if (excess <= 0) return { messages, tokensFreed: 0, detail: "" };
 
-    // Drop the oldest half of messages, keep the newer half
     const keepCount = Math.max(MIN_RECENT_MESSAGES, Math.ceil(messages.length / 2));
     const dropCount = messages.length - keepCount;
     const dropped = messages.slice(0, dropCount);
@@ -390,14 +548,12 @@ export class ContextManager {
 
     const droppedTokens = dropped.reduce((s, m) => s + estimateMessageTokens(m), 0);
 
-    // Insert a placeholder summary at the start
     const summaryMsg: UserMessage = {
       role: "user",
       content: `[Auto-compacted: ${dropCount} older messages (≈${droppedTokens} tokens) were removed to fit context window. Recent conversation preserved.]`,
       timestamp: kept[0]?.timestamp ?? Date.now(),
     };
 
-    // Also record in the real history
     const summaryBoundary: SummaryBoundary = {
       role: "summary",
       content: summaryMsg.content as string,
@@ -406,6 +562,10 @@ export class ContextManager {
       timestamp: Date.now(),
     };
     this.messages.push(summaryBoundary);
+
+    if (this.isPersistedMode) {
+      this.persistMessage(summaryBoundary);
+    }
 
     return {
       messages: [summaryMsg, ...kept],
@@ -423,8 +583,11 @@ export class ContextManager {
       tokensFreed,
       timestamp: Date.now(),
     };
-    // Insert at the beginning (before current messages, after any existing markers)
     this.messages.unshift(marker);
+
+    if (this.isPersistedMode) {
+      this.persistMessage(marker);
+    }
   }
 }
 
