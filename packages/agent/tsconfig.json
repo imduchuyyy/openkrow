@@ -12,6 +12,7 @@
     "state",
     "tools",
     "types",
-    "workspace"
+    "workspace",
+    "__tests__"
   ]
 }

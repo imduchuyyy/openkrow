@@ -47,9 +47,13 @@ export const SCHEMA = {
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'tool', 'snip', 'summary')),
       content TEXT NOT NULL,
       tool_calls TEXT,
+      tool_call_id TEXT,
+      tool_name TEXT,
+      is_error INTEGER DEFAULT 0,
+      metadata TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );

@@ -3,39 +3,38 @@
  */
 
 import { BaseRepository } from "./base.js";
-import type { Message } from "../types/index.js";
-
-export interface CreateMessageInput {
-  conversation_id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  tool_calls?: Record<string, unknown>[];
-}
+import type { Message, CreateMessageInput } from "../types/index.js";
 
 export class MessageRepository extends BaseRepository<Message> {
   protected tableName = "messages";
 
-  /**
-   * Create a new message
-   */
   create(input: CreateMessageInput): Message {
     const id = this.generateId();
     const now = this.now();
     const toolCalls = input.tool_calls ? JSON.stringify(input.tool_calls) : null;
+    const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
 
     const stmt = this.db.prepare(`
-      INSERT INTO messages (id, conversation_id, role, content, tool_calls, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, tool_name, is_error, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(id, input.conversation_id, input.role, input.content, toolCalls, now);
+    stmt.run(
+      id,
+      input.conversation_id,
+      input.role,
+      input.content,
+      toolCalls,
+      input.tool_call_id ?? null,
+      input.tool_name ?? null,
+      input.is_error ? 1 : 0,
+      metadata,
+      now,
+    );
 
     return this.findById(id)!;
   }
 
-  /**
-   * Find messages by conversation ID
-   */
   findByConversationId(conversationId: string, limit?: number): Message[] {
     let sql = "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC";
     const params: (string | number)[] = [conversationId];
@@ -49,9 +48,6 @@ export class MessageRepository extends BaseRepository<Message> {
     return stmt.all(...params) as Message[];
   }
 
-  /**
-   * Get the last N messages for a conversation
-   */
   getLastMessages(conversationId: string, count: number): Message[] {
     const stmt = this.db.prepare(`
       SELECT * FROM (
@@ -65,9 +61,6 @@ export class MessageRepository extends BaseRepository<Message> {
     return stmt.all(conversationId, count) as Message[];
   }
 
-  /**
-   * Count messages in a conversation
-   */
   countByConversationId(conversationId: string): number {
     const stmt = this.db.prepare(
       "SELECT COUNT(*) as count FROM messages WHERE conversation_id = ?"
@@ -76,18 +69,12 @@ export class MessageRepository extends BaseRepository<Message> {
     return result.count;
   }
 
-  /**
-   * Delete all messages in a conversation
-   */
   deleteByConversationId(conversationId: string): number {
     const stmt = this.db.prepare("DELETE FROM messages WHERE conversation_id = ?");
     const result = stmt.run(conversationId);
     return result.changes;
   }
 
-  /**
-   * Search messages by content
-   */
   searchByContent(query: string, limit: number = 50): Message[] {
     const stmt = this.db.prepare(`
       SELECT * FROM messages 

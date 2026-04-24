@@ -28,9 +28,52 @@ const INITIAL_MIGRATION: MigrationDefinition = {
 };
 
 /**
+ * Migration 002: Expand messages table for rich message types
+ * Adds tool_call_id, tool_name, is_error, metadata columns
+ * and expands the role CHECK constraint to include tool, snip, summary
+ */
+const EXPAND_MESSAGES_MIGRATION: MigrationDefinition = {
+  name: "002_expand_messages",
+  up: `
+    ALTER TABLE messages ADD COLUMN tool_call_id TEXT;
+    ALTER TABLE messages ADD COLUMN tool_name TEXT;
+    ALTER TABLE messages ADD COLUMN is_error INTEGER DEFAULT 0;
+    ALTER TABLE messages ADD COLUMN metadata TEXT;
+
+    -- SQLite doesn't support ALTER CHECK directly, so we recreate the table
+    -- First create a new table with the updated constraint
+    CREATE TABLE messages_new (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'tool', 'snip', 'summary')),
+      content TEXT NOT NULL,
+      tool_calls TEXT,
+      tool_call_id TEXT,
+      tool_name TEXT,
+      is_error INTEGER DEFAULT 0,
+      metadata TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    -- Copy existing data
+    INSERT INTO messages_new (id, conversation_id, role, content, tool_calls, created_at)
+    SELECT id, conversation_id, role, content, tool_calls, created_at FROM messages;
+
+    -- Swap tables
+    DROP TABLE messages;
+    ALTER TABLE messages_new RENAME TO messages;
+
+    -- Recreate indexes
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+  `,
+};
+
+/**
  * All migrations in order
  */
-const MIGRATIONS: MigrationDefinition[] = [INITIAL_MIGRATION];
+const MIGRATIONS: MigrationDefinition[] = [INITIAL_MIGRATION, EXPAND_MESSAGES_MIGRATION];
 
 /**
  * Get list of applied migrations
