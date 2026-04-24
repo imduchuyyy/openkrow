@@ -31,7 +31,8 @@ import type {
   SendableMessage,
   ContextAssemblyOptions,
 } from "./types/index.js";
-import { ToolRegistry } from "./tools/index.js";
+import { ToolManager } from "./tools/index.js";
+import type { ToolManagerOptions } from "./tools/index.js";
 import { ContextManager } from "./context/index.js";
 import { toLLMMessages, extractToolCalls, hasToolCalls } from "./context/convert.js";
 
@@ -50,7 +51,7 @@ const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 10;
  */
 export class Agent extends EventEmitter<AgentEvents> {
   readonly config: AgentConfig;
-  readonly tools: ToolRegistry;
+  readonly tools: ToolManager;
   readonly context: ContextManager;
 
   private _isRunning = false;
@@ -58,7 +59,11 @@ export class Agent extends EventEmitter<AgentEvents> {
   constructor(config: AgentConfig) {
     super();
     this.config = config;
-    this.tools = new ToolRegistry();
+    this.tools = new ToolManager({
+      cwd: config.cwd,
+      skillManager: config.skillManager,
+      questionHandler: config.questionHandler,
+    });
 
     // ContextManager owns persistence — pass database + conversationId
     this.context = new ContextManager({
@@ -374,7 +379,33 @@ export class Agent extends EventEmitter<AgentEvents> {
 }
 
 // Re-export supporting classes
-export { ToolRegistry } from "./tools/index.js";
+export {
+  ToolManager,
+  ToolManager as ToolRegistry,
+  createTool,
+  loadDescription,
+  ok,
+  fail,
+  createReadTool,
+  createWriteTool,
+  createEditTool,
+  createBashTool,
+  createTodoTool,
+  createWebFetchTool,
+  createWebSearchTool,
+  createSkillTool,
+  createQuestionTool,
+} from "./tools/index.js";
+export type {
+  CreateToolOptions,
+  ToolManagerOptions,
+  TodoItem,
+  SkillContent,
+  SkillLoader,
+  QuestionOption,
+  QuestionPrompt,
+  QuestionHandler,
+} from "./tools/index.js";
 export { ContextManager } from "./context/index.js";
 export type { ContextManagerOptions } from "./context/index.js";
 export { ConversationState } from "./state/index.js";

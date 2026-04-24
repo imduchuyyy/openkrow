@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && cp -r context/prompt dist/context/prompt",
+    "build": "tsc && cp -r context/prompt dist/context/prompt && cp tools/*.txt dist/tools/",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",

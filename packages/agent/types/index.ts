@@ -34,6 +34,12 @@ export interface AgentConfig {
   conversationId?: string;
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
+  /** Working directory for bash tool (defaults to process.cwd()) */
+  cwd?: string;
+  /** SkillManager instance — enables the skill tool when provided */
+  skillManager?: import("../skills/index.js").SkillManager;
+  /** Question handler callback — enables the question tool when provided */
+  questionHandler?: import("../tools/question.js").QuestionHandler;
 }
 
 // ---------------------------------------------------------------------------
