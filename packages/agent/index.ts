@@ -424,6 +424,7 @@ export type {
 export { ContextManager } from "./context/index.js";
 export type { ContextManagerOptions } from "./context/index.js";
 export { PersonalityManager } from "./personality/index.js";
+export { SessionManager } from "./session/index.js";
 export { WorkspaceManager } from "@openkrow/workspace";
 export { SkillManager } from "@openkrow/skill";
 export type { Skill, SkillContent, SkillDefinition } from "@openkrow/skill";

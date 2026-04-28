@@ -1,25 +1,24 @@
 /**
- * Orchestrator - Central manager for database, agents, and sessions
+ * Orchestrator - Central manager for agents and sessions
  *
  * The orchestrator is the core of OpenKrow server, managing:
- * - Database connections and repositories
  * - Agent instances per session
- * - Session and conversation state
+ * - Session and conversation state (via SessionManager)
  * - Configuration via ConfigManager
+ *
+ * IMPORTANT: The app never reads or writes the database directly.
+ * All DB access is delegated to packages: SessionManager, ConfigManager, Agent.
  */
 
 import {
   createDatabaseClient,
-  type DatabaseClient,
   type DatabaseConfig,
-  type User,
-  type Session,
-  type Conversation,
 } from "@openkrow/database";
 import { ConfigManager } from "@openkrow/config";
-import { Agent } from "@openkrow/agent";
+import { Agent, SessionManager } from "@openkrow/agent";
 import { WorkspaceManager } from "@openkrow/workspace";
 import type { LLMConfig } from "@openkrow/llm";
+import type { Session, Conversation } from "@openkrow/database";
 
 export interface OrchestratorConfig {
   /** Database configuration */
@@ -38,19 +37,18 @@ export interface OrchestratorConfig {
  * Orchestrator manages the lifecycle of agents, sessions, and database interactions
  */
 export class Orchestrator {
-  private db: DatabaseClient;
+  private sessions: SessionManager;
   private _config: OrchestratorConfig;
   private _configManager: ConfigManager;
   private agents: Map<string, Agent> = new Map();
   /** Active AbortControllers keyed by conversationId — one active request per conversation. */
   private activeRequests: Map<string, AbortController> = new Map();
-  private currentUser: User | null = null;
   private workspace: WorkspaceManager | null = null;
 
-  private constructor(db: DatabaseClient, config: OrchestratorConfig) {
-    this.db = db;
+  private constructor(sessions: SessionManager, config: OrchestratorConfig) {
+    this.sessions = sessions;
     this._config = config;
-    this._configManager = new ConfigManager(db.settings);
+    this._configManager = new ConfigManager(sessions.database.settings);
 
     // Initialize workspace: prefer ConfigManager, fall back to config param
     const wsPath = config.workspacePath ?? this._configManager.getWorkspacePath();
@@ -60,14 +58,14 @@ export class Orchestrator {
     }
   }
 
-  /** Get the database client (for direct access by the app) */
-  get database(): DatabaseClient {
-    return this.db;
-  }
-
   /** Get the ConfigManager for reading/writing all configuration. */
   get configManager(): ConfigManager {
     return this._configManager;
+  }
+
+  /** Get the SessionManager for session/conversation operations. */
+  get sessionManager(): SessionManager {
+    return this.sessions;
   }
 
   /**
@@ -75,7 +73,8 @@ export class Orchestrator {
    */
   static create(config: OrchestratorConfig): Orchestrator {
     const db = createDatabaseClient(config.database);
-    return new Orchestrator(db, config);
+    const sessions = new SessionManager(db);
+    return new Orchestrator(sessions, config);
   }
 
   /**
@@ -100,56 +99,15 @@ export class Orchestrator {
   }
 
   // -----------------------------------------------------------------------
-  // User / Session / Conversation management
+  // Session / Conversation (delegated to SessionManager)
   // -----------------------------------------------------------------------
 
-  getUser(): User {
-    if (!this.currentUser) {
-      this.currentUser = this.db.users.getOrCreateDefault();
-    }
-    return this.currentUser;
-  }
-
-  createSession(workspacePath: string): Session {
-    const user = this.getUser();
-    return this.db.sessions.create({
-      user_id: user.id,
-      workspace_path: workspacePath,
-    });
-  }
-
-  getSession(sessionId: string): Session | null {
-    return this.db.sessions.findById(sessionId);
-  }
-
   getOrCreateSession(workspacePath: string): Session {
-    const user = this.getUser();
-    const activeSession = this.db.sessions.getActiveSession(user.id);
-
-    if (activeSession && activeSession.workspace_path === workspacePath) {
-      return activeSession;
-    }
-
-    return this.createSession(workspacePath);
-  }
-
-  endSession(sessionId: string): void {
-    this.db.sessions.endSession(sessionId);
-    this.agents.delete(sessionId);
-  }
-
-  createConversation(sessionId: string, title?: string): Conversation {
-    return this.db.conversations.create({ session_id: sessionId, title });
-  }
-
-  getConversation(conversationId: string): Conversation | null {
-    return this.db.conversations.findById(conversationId);
+    return this.sessions.getOrCreateSession(workspacePath);
   }
 
   getOrCreateConversation(sessionId: string): Conversation {
-    const conversations = this.db.conversations.findBySessionId(sessionId, 1);
-    if (conversations.length > 0) return conversations[0];
-    return this.createConversation(sessionId);
+    return this.sessions.getOrCreateConversation(sessionId);
   }
 
   // -----------------------------------------------------------------------
@@ -167,8 +125,7 @@ export class Orchestrator {
         name: `openkrow-${sessionId}`,
         description: "OpenKrow AI assistant",
         customPrompt: systemPrompt,
-        // No llm here — resolved per-request in chat()/streamChat()
-        database: this.db,
+        database: this.sessions.database,
         conversationId,
         ...(this.workspace ? { workspace: this.workspace } : {}),
       });
@@ -188,10 +145,10 @@ export class Orchestrator {
     message: string,
     overrides?: { provider?: string; model?: string }
   ): Promise<{ response: string; messageId: string }> {
-    const conversation = this.getConversation(conversationId);
+    const conversation = this.sessions.getConversation(conversationId);
     if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
 
-    const session = this.getSession(conversation.session_id);
+    const session = this.sessions.getSession(conversation.session_id);
     if (!session) throw new Error(`Session not found: ${conversation.session_id}`);
 
     const agent = this.getAgent(session.id, conversationId);
@@ -208,9 +165,9 @@ export class Orchestrator {
         signal: controller.signal,
       });
 
-      const messages = this.db.messages.getLastMessages(conversationId, 1);
+      const messages = this.sessions.getLastMessages(conversationId, 1);
       const lastMessage = messages[messages.length - 1];
-      this.db.conversations.update(conversationId, {});
+      this.sessions.touchConversation(conversationId);
 
       return { response, messageId: lastMessage?.id ?? "" };
     } finally {
@@ -223,10 +180,10 @@ export class Orchestrator {
     message: string,
     overrides?: { provider?: string; model?: string }
   ): AsyncGenerator<string, { messageId: string }, unknown> {
-    const conversation = this.getConversation(conversationId);
+    const conversation = this.sessions.getConversation(conversationId);
     if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
 
-    const session = this.getSession(conversation.session_id);
+    const session = this.sessions.getSession(conversation.session_id);
     if (!session) throw new Error(`Session not found: ${conversation.session_id}`);
 
     const agent = this.getAgent(session.id, conversationId);
@@ -245,9 +202,9 @@ export class Orchestrator {
         yield chunk;
       }
 
-      const messages = this.db.messages.getLastMessages(conversationId, 1);
+      const messages = this.sessions.getLastMessages(conversationId, 1);
       const lastMessage = messages[messages.length - 1];
-      this.db.conversations.update(conversationId, {});
+      this.sessions.touchConversation(conversationId);
 
       return { messageId: lastMessage?.id ?? "" };
     } finally {
@@ -259,10 +216,6 @@ export class Orchestrator {
   // Request cancellation
   // -----------------------------------------------------------------------
 
-  /**
-   * Cancel an active request for a conversation.
-   * Returns true if a request was found and aborted, false otherwise.
-   */
   cancelRequest(conversationId: string): boolean {
     const controller = this.activeRequests.get(conversationId);
     if (!controller) return false;
@@ -272,15 +225,15 @@ export class Orchestrator {
   }
 
   // -----------------------------------------------------------------------
-  // Queries
+  // Queries (delegated to SessionManager)
   // -----------------------------------------------------------------------
 
   getConversationHistory(conversationId: string, limit?: number) {
-    return this.db.messages.findByConversationId(conversationId, limit);
+    return this.sessions.getConversationHistory(conversationId, limit);
   }
 
   getRecentConversations(limit?: number) {
-    return this.db.conversations.getRecent(limit);
+    return this.sessions.getRecentConversations(limit);
   }
 
   getActiveAgentsCount(): number {
@@ -296,14 +249,14 @@ export class Orchestrator {
   // -----------------------------------------------------------------------
 
   cleanup(): void {
-    // Abort all active requests
     for (const controller of this.activeRequests.values()) {
       controller.abort();
     }
     this.activeRequests.clear();
 
-    for (const sessionId of this.agents.keys()) {
-      this.endSession(sessionId);
+    for (const [key] of this.agents) {
+      const sessionId = key.split(":")[0]!;
+      this.sessions.endSession(sessionId);
     }
     this.agents.clear();
   }
