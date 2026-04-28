@@ -29,6 +29,10 @@ export interface ChatRequest {
   sessionId?: string;
   /** Whether to stream the response */
   stream?: boolean;
+  /** Optional provider override for this request */
+  provider?: string;
+  /** Optional model override for this request */
+  model?: string;
 }
 
 export interface ChatResponse {

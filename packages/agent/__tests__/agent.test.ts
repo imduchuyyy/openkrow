@@ -132,7 +132,7 @@ describe("Agent construction", () => {
 
   it("should throw run() without llm config", async () => {
     const agent = new Agent({ name: "test-agent" });
-    await assert.rejects(() => agent.run("hello"), /requires llm config/);
+    await assert.rejects(() => agent.run("hello"), /requires LLM config/);
   });
 
   it("should throw run() with unknown model", async () => {

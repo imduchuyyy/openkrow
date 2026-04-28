@@ -12,6 +12,7 @@ import {
   complete as llmComplete,
   getTextContent,
   getModelById,
+  LLMConfig
 } from "@openkrow/llm";
 import type {
   Model,
@@ -24,6 +25,7 @@ import type {
 import type {
   AgentConfig,
   AgentEvents,
+  RunOptions,
   Message,
   UserMessage,
   AssistantMessage,
@@ -83,31 +85,30 @@ export class Agent extends EventEmitter<AgentEvents> {
       });
     }
 
-    // Configure LLM-based summarizer for Phase 5 auto-compaction
+    // If llm is set at construction time (legacy), configure the summarizer eagerly
     if (config.llm) {
-      this.configureSummarizer();
+      this.configureSummarizer(config.llm);
     }
   }
 
   /**
    * Set up the LLM-powered summarizer for context auto-compaction.
-   * Uses the configured model to summarize older messages when the
+   * Uses the provided LLM config to summarize older messages when the
    * context window overflows past all other compaction phases.
    */
-  private configureSummarizer(): void {
-    const model = getModelById(this.config.llm!.model);
+  private configureSummarizer(llmConfig: LLMConfig): void {
+    const model = getModelById(llmConfig.model);
     if (!model) return;
 
     const streamOpts: StreamOptions = {
-      apiKey: this.config.llm!.apiKey,
+      apiKey: llmConfig.apiKey,
       maxTokens: 1024, // Summary should be concise
       temperature: 0, // Deterministic summaries
-      envFallback: this.config.llm!.apiKey ? false : true,
+      envFallback: llmConfig.apiKey ? false : true,
     };
 
     this.context.setSummarizer(async (messages: SendableMessage[]): Promise<string> => {
-      const { toLLMMessages: convert } = await import("./context/convert.js");
-      const llmMessages = convert(messages);
+      const llmMessages = toLLMMessages(messages);
 
       const summaryPrompt = [
         "You are a conversation summarizer. Summarize the following conversation messages into a concise paragraph.",
@@ -132,31 +133,37 @@ export class Agent extends EventEmitter<AgentEvents> {
   // ---- Model resolution ----
 
   /**
-   * Resolve the LLM Model object from config. Throws if not configured or not found.
+   * Resolve the effective LLM config: per-call overrides → constructor fallback.
    */
-  private resolveModel(): Model {
-    if (!this.config.llm) {
-      throw new Error("Agent requires llm config to call the LLM. Set config.llm with provider and model.");
+  private effectiveLLMConfig(perCall?: LLMConfig): LLMConfig {
+    const cfg = perCall ?? this.config.llm;
+    if (!cfg) {
+      throw new Error("Agent requires LLM config. Pass it via run()/stream() options.llm or AgentConfig.llm.");
     }
-    const model = getModelById(this.config.llm.model);
+    return cfg;
+  }
+
+  /**
+   * Resolve the LLM Model object. Throws if not found.
+   */
+  private resolveModel(llmConfig: LLMConfig): Model {
+    const model = getModelById(llmConfig.model);
     if (!model) {
-      throw new Error(`Model "${this.config.llm.model}" not found in the model registry.`);
+      throw new Error(`Model "${llmConfig.model}" not found in the model registry.`);
     }
     return model;
   }
 
   /**
-   * Build StreamOptions from agent config.
+   * Build StreamOptions from LLM config.
    */
-  private buildStreamOptions(signal?: AbortSignal): StreamOptions {
-    const llmConfig = this.config.llm;
+  private buildStreamOptions(llmConfig: LLMConfig, signal?: AbortSignal): StreamOptions {
     return {
-      apiKey: llmConfig?.apiKey,
-      temperature: llmConfig?.temperature,
-      maxTokens: llmConfig?.maxTokens,
+      apiKey: llmConfig.apiKey,
+      temperature: llmConfig.temperature,
+      maxTokens: llmConfig.maxTokens,
       signal,
-      // Desktop apps pass credentials from DB, so disable env fallback
-      envFallback: llmConfig?.apiKey ? false : true,
+      envFallback: llmConfig.apiKey ? false : true,
     };
   }
 
@@ -235,14 +242,18 @@ export class Agent extends EventEmitter<AgentEvents> {
    * Run a single prompt and return the full response.
    * Implements the full agentic loop with tool calling.
    */
-  async run(input: string, options?: { signal?: AbortSignal }): Promise<string> {
+  async run(input: string, options?: RunOptions): Promise<string> {
     if (this._isRunning) {
       throw new Error("Agent is already running");
     }
 
-    // Validate before entering running state
-    const model = this.resolveModel();
-    const streamOpts = this.buildStreamOptions(options?.signal);
+    // Resolve LLM config: per-call → constructor fallback
+    const llmConfig = this.effectiveLLMConfig(options?.llm);
+    const model = this.resolveModel(llmConfig);
+    const streamOpts = this.buildStreamOptions(llmConfig, options?.signal);
+
+    // Ensure summarizer is configured with current LLM config
+    this.configureSummarizer(llmConfig);
 
     this._isRunning = true;
 
@@ -303,14 +314,18 @@ export class Agent extends EventEmitter<AgentEvents> {
    * Yields text deltas. Tool calls are handled internally (emitted as events).
    * The final assistant message is persisted after each LLM turn.
    */
-  async *stream(input: string, options?: { signal?: AbortSignal }): AsyncGenerator<string, void, unknown> {
+  async *stream(input: string, options?: RunOptions): AsyncGenerator<string, void, unknown> {
     if (this._isRunning) {
       throw new Error("Agent is already running");
     }
 
-    // Validate before entering running state
-    const model = this.resolveModel();
-    const streamOpts = this.buildStreamOptions(options?.signal);
+    // Resolve LLM config: per-call → constructor fallback
+    const llmConfig = this.effectiveLLMConfig(options?.llm);
+    const model = this.resolveModel(llmConfig);
+    const streamOpts = this.buildStreamOptions(llmConfig, options?.signal);
+
+    // Ensure summarizer is configured with current LLM config
+    this.configureSummarizer(llmConfig);
 
     this._isRunning = true;
 
@@ -418,6 +433,7 @@ export { SkillManager } from "./skills/index.js";
 export type {
   AgentConfig,
   AgentEvents,
+  RunOptions,
   Tool,
   ToolDefinition,
   ToolResult,
@@ -433,6 +449,7 @@ export type {
   CompactionAction,
   DatabaseClient,
   SummarizerFn,
+  LLMConfig,
 } from "./types/index.js";
 
 // Re-export workspace types

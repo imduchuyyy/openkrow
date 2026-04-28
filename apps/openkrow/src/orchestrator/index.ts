@@ -77,21 +77,23 @@ export class Orchestrator {
   }
 
   /**
-   * Resolve the LLM config to use for new agents.
-   * Priority: ConfigManager active model → constructor llm param → defaults.
+   * Resolve the LLM config for a request.
+   * Priority: request overrides → ConfigManager active model → constructor llm param.
    */
-  private resolveLLMConfig(): LLMConfig {
+  resolveLLMConfig(overrides?: { provider?: string; model?: string }): LLMConfig {
     const active = this._configManager.getActiveModel();
-    const apiKey = this._configManager.resolveApiKey(active.provider);
-    const overrides = this._configManager.getModelOverrides(active.provider, active.model);
+    const provider = (overrides?.provider ?? active.provider) as LLMConfig["provider"];
+    const model = overrides?.model ?? active.model;
+    const apiKey = this._configManager.resolveApiKey(provider);
+    const modelOverrides = this._configManager.getModelOverrides(provider, model);
 
     return {
-      provider: active.provider,
-      model: active.model,
+      provider,
+      model,
       apiKey: apiKey ?? this._config.llm?.apiKey,
-      baseUrl: overrides?.baseUrl ?? this._config.llm?.baseUrl,
-      maxTokens: overrides?.maxTokens ?? this._config.llm?.maxTokens,
-      temperature: overrides?.temperature ?? this._config.llm?.temperature,
+      baseUrl: modelOverrides?.baseUrl ?? this._config.llm?.baseUrl,
+      maxTokens: modelOverrides?.maxTokens ?? this._config.llm?.maxTokens,
+      temperature: modelOverrides?.temperature ?? this._config.llm?.temperature,
     };
   }
 
@@ -157,7 +159,6 @@ export class Orchestrator {
     let agent = this.agents.get(key);
 
     if (!agent) {
-      const llmConfig = this.resolveLLMConfig();
       const maxTurns = this._config.maxTurns ?? this._configManager.getMaxTurns();
       const systemPrompt = this._config.systemPrompt ?? this._configManager.getSystemPrompt() ?? undefined;
 
@@ -165,7 +166,7 @@ export class Orchestrator {
         name: `openkrow-${sessionId}`,
         description: "OpenKrow AI assistant",
         customPrompt: systemPrompt,
-        llm: llmConfig,
+        // No llm here — resolved per-request in chat()/streamChat()
         database: this.db,
         conversationId,
         maxTurns,
@@ -184,7 +185,8 @@ export class Orchestrator {
 
   async chat(
     conversationId: string,
-    message: string
+    message: string,
+    overrides?: { provider?: string; model?: string }
   ): Promise<{ response: string; messageId: string }> {
     const conversation = this.getConversation(conversationId);
     if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
@@ -193,7 +195,8 @@ export class Orchestrator {
     if (!session) throw new Error(`Session not found: ${conversation.session_id}`);
 
     const agent = this.getAgent(session.id, conversationId);
-    const response = await agent.run(message);
+    const llmConfig = this.resolveLLMConfig(overrides);
+    const response = await agent.run(message, { llm: llmConfig });
 
     const messages = this.db.messages.getLastMessages(conversationId, 1);
     const lastMessage = messages[messages.length - 1];
@@ -204,7 +207,8 @@ export class Orchestrator {
 
   async *streamChat(
     conversationId: string,
-    message: string
+    message: string,
+    overrides?: { provider?: string; model?: string }
   ): AsyncGenerator<string, { messageId: string }, unknown> {
     const conversation = this.getConversation(conversationId);
     if (!conversation) throw new Error(`Conversation not found: ${conversationId}`);
@@ -213,8 +217,9 @@ export class Orchestrator {
     if (!session) throw new Error(`Session not found: ${conversation.session_id}`);
 
     const agent = this.getAgent(session.id, conversationId);
+    const llmConfig = this.resolveLLMConfig(overrides);
 
-    for await (const chunk of agent.stream(message)) {
+    for await (const chunk of agent.stream(message, { llm: llmConfig })) {
       yield chunk;
     }
 
