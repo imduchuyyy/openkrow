@@ -9,7 +9,6 @@
 // Library exports
 // ---------------------------------------------------------------------------
 
-export { OpenKrow } from "./openkrow.js";
 export { loadConfig, saveConfig, resetConfig, getConfigPath, type OpenKrowConfig } from "./config/loader.js";
 export { VERSION } from "./version.js";
 
@@ -60,8 +59,6 @@ if (isMainModule) {
   startServer({
     config: { port, host },
     workspacePath: process.env.OPENKROW_WORKSPACE,
-    apiKey: process.env.OPENKROW_API_KEY,
-    provider: (process.env.OPENKROW_PROVIDER as "openai" | "anthropic" | "google") ?? undefined,
-    model: process.env.OPENKROW_MODEL,
+    serverApiKey: process.env.OPENKROW_SERVER_API_KEY,
   });
 }

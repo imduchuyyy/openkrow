@@ -28,10 +28,10 @@ const cm = (o: Orchestrator) => o.configManager;
 
 export interface OpenKrowServerOptions {
   config?: Partial<ServerConfig>;
+  /** Workspace directory path */
   workspacePath?: string;
-  apiKey?: string;
-  provider?: "openai" | "anthropic" | "google";
-  model?: string;
+  /** API key to secure the server. All requests must include this in the Authorization header. In-memory only. */
+  serverApiKey?: string;
 }
 
 /**
@@ -42,19 +42,16 @@ export class OpenKrowServer {
   private orchestrator: Orchestrator;
   private config: ServerConfig;
   private workspacePath: string;
+  private serverApiKey: string | undefined;
   private startTime: number = Date.now();
 
   constructor(options: OpenKrowServerOptions = {}) {
     this.config = { ...DEFAULT_SERVER_CONFIG, ...options.config };
     this.workspacePath = options.workspacePath ?? process.cwd();
+    this.serverApiKey = options.serverApiKey;
 
-    // Initialize orchestrator
+    // Initialize orchestrator — LLM config is resolved from ConfigManager at runtime
     this.orchestrator = Orchestrator.create({
-      llm: {
-        provider: options.provider ?? "anthropic",
-        model: options.model ?? "claude-sonnet-4-20250514",
-        apiKey: options.apiKey ?? process.env.ANTHROPIC_API_KEY ?? process.env.OPENAI_API_KEY,
-      },
       workspacePath: this.workspacePath,
     });
   }
@@ -88,7 +85,7 @@ export class OpenKrowServer {
         }
 
         try {
-          // Health endpoint
+          // Health endpoint (no auth required)
           if (path === "/health" || path === `${self.config.apiPrefix}/health`) {
             const health: HealthResponse = {
               status: "ok",
@@ -96,6 +93,21 @@ export class OpenKrowServer {
               uptime: Date.now() - self.startTime,
             };
             return Response.json(health, { headers: corsHeaders });
+          }
+
+          // --- Auth gate: all other routes require the server API key ---
+          if (self.serverApiKey) {
+            const authHeader = req.headers.get("authorization");
+            const token = authHeader?.startsWith("Bearer ")
+              ? authHeader.slice(7)
+              : null;
+
+            if (token !== self.serverApiKey) {
+              return Response.json(
+                { error: "Unauthorized", code: "UNAUTHORIZED" } as ErrorResponse,
+                { status: 401, headers: corsHeaders }
+              );
+            }
           }
 
           // Chat endpoint
@@ -337,9 +349,10 @@ export class OpenKrowServer {
 
     console.log(`OpenKrow server started on http://${this.config.host}:${this.config.port}`);
     console.log(`Workspace: ${this.workspacePath}`);
+    console.log(`Auth: ${this.serverApiKey ? "enabled (Bearer token required)" : "disabled"}`);
     console.log(`\nEndpoints:`);
+    console.log(`  GET  /health                       - Health check (no auth)`);
     console.log(`  POST /chat                         - Send a message`);
-    console.log(`  GET  /health                       - Health check`);
     console.log(`  GET  /conversations                - List conversations`);
     console.log(`  GET  /conversations/:id/messages    - Conversation history`);
     console.log(`  GET  /auth/keys                    - List stored API keys`);
