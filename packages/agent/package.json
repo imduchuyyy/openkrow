@@ -21,6 +21,7 @@
   "dependencies": {
     "@openkrow/database": "*",
     "@openkrow/llm": "*",
+    "@openkrow/skill": "*",
     "@openkrow/workspace": "*",
     "bun-types": "^1.1.0",
     "eventemitter3": "^5.0.1"

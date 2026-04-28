@@ -42,6 +42,8 @@ export class Orchestrator {
   private _config: OrchestratorConfig;
   private _configManager: ConfigManager;
   private agents: Map<string, Agent> = new Map();
+  /** Active AbortControllers keyed by conversationId — one active request per conversation. */
+  private activeRequests: Map<string, AbortController> = new Map();
   private currentUser: User | null = null;
   private workspace: WorkspaceManager | null = null;
 
@@ -159,7 +161,6 @@ export class Orchestrator {
     let agent = this.agents.get(key);
 
     if (!agent) {
-      const maxTurns = this._config.maxTurns ?? this._configManager.getMaxTurns();
       const systemPrompt = this._config.systemPrompt ?? this._configManager.getSystemPrompt() ?? undefined;
 
       agent = new Agent({
@@ -169,7 +170,6 @@ export class Orchestrator {
         // No llm here — resolved per-request in chat()/streamChat()
         database: this.db,
         conversationId,
-        maxTurns,
         ...(this.workspace ? { workspace: this.workspace } : {}),
       });
 
@@ -196,13 +196,26 @@ export class Orchestrator {
 
     const agent = this.getAgent(session.id, conversationId);
     const llmConfig = this.resolveLLMConfig(overrides);
-    const response = await agent.run(message, { llm: llmConfig });
+    const maxTurns = this._config.maxTurns ?? this._configManager.getMaxTurns();
 
-    const messages = this.db.messages.getLastMessages(conversationId, 1);
-    const lastMessage = messages[messages.length - 1];
-    this.db.conversations.update(conversationId, {});
+    const controller = new AbortController();
+    this.activeRequests.set(conversationId, controller);
 
-    return { response, messageId: lastMessage?.id ?? "" };
+    try {
+      const response = await agent.run(message, {
+        llm: llmConfig,
+        maxTurns: maxTurns || undefined,
+        signal: controller.signal,
+      });
+
+      const messages = this.db.messages.getLastMessages(conversationId, 1);
+      const lastMessage = messages[messages.length - 1];
+      this.db.conversations.update(conversationId, {});
+
+      return { response, messageId: lastMessage?.id ?? "" };
+    } finally {
+      this.activeRequests.delete(conversationId);
+    }
   }
 
   async *streamChat(
@@ -218,16 +231,44 @@ export class Orchestrator {
 
     const agent = this.getAgent(session.id, conversationId);
     const llmConfig = this.resolveLLMConfig(overrides);
+    const maxTurns = this._config.maxTurns ?? this._configManager.getMaxTurns();
 
-    for await (const chunk of agent.stream(message, { llm: llmConfig })) {
-      yield chunk;
+    const controller = new AbortController();
+    this.activeRequests.set(conversationId, controller);
+
+    try {
+      for await (const chunk of agent.stream(message, {
+        llm: llmConfig,
+        maxTurns: maxTurns || undefined,
+        signal: controller.signal,
+      })) {
+        yield chunk;
+      }
+
+      const messages = this.db.messages.getLastMessages(conversationId, 1);
+      const lastMessage = messages[messages.length - 1];
+      this.db.conversations.update(conversationId, {});
+
+      return { messageId: lastMessage?.id ?? "" };
+    } finally {
+      this.activeRequests.delete(conversationId);
     }
+  }
 
-    const messages = this.db.messages.getLastMessages(conversationId, 1);
-    const lastMessage = messages[messages.length - 1];
-    this.db.conversations.update(conversationId, {});
+  // -----------------------------------------------------------------------
+  // Request cancellation
+  // -----------------------------------------------------------------------
 
-    return { messageId: lastMessage?.id ?? "" };
+  /**
+   * Cancel an active request for a conversation.
+   * Returns true if a request was found and aborted, false otherwise.
+   */
+  cancelRequest(conversationId: string): boolean {
+    const controller = this.activeRequests.get(conversationId);
+    if (!controller) return false;
+    controller.abort();
+    this.activeRequests.delete(conversationId);
+    return true;
   }
 
   // -----------------------------------------------------------------------
@@ -255,6 +296,12 @@ export class Orchestrator {
   // -----------------------------------------------------------------------
 
   cleanup(): void {
+    // Abort all active requests
+    for (const controller of this.activeRequests.values()) {
+      controller.abort();
+    }
+    this.activeRequests.clear();
+
     for (const sessionId of this.agents.keys()) {
       this.endSession(sessionId);
     }

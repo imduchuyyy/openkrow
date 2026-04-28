@@ -34,6 +34,7 @@
       "dependencies": {
         "@openkrow/database": "*",
         "@openkrow/llm": "*",
+        "@openkrow/skill": "*",
         "@openkrow/workspace": "*",
         "bun-types": "^1.1.0",
         "eventemitter3": "^5.0.1",
@@ -75,6 +76,16 @@
         "@types/node": "^22.12.0",
         "typescript": "^5.7.0",
         "vitest": "^4.1.5",
+      },
+    },
+    "packages/skill": {
+      "name": "@openkrow/skill",
+      "version": "0.1.0",
+      "dependencies": {
+        "bun-types": "^1.1.0",
+      },
+      "devDependencies": {
+        "typescript": "^5.7.0",
       },
     },
     "packages/tui": {
@@ -129,6 +140,8 @@
     "@openkrow/database": ["@openkrow/database@workspace:packages/database"],
 
     "@openkrow/llm": ["@openkrow/llm@workspace:packages/llm"],
+
+    "@openkrow/skill": ["@openkrow/skill@workspace:packages/skill"],
 
     "@openkrow/tui": ["@openkrow/tui@workspace:packages/tui"],
 

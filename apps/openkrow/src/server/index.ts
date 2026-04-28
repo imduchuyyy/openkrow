@@ -187,6 +187,41 @@ export class OpenKrowServer {
             return Response.json(response, { headers: corsHeaders });
           }
 
+          // Cancel endpoint
+          if (
+            path === "/chat/cancel" ||
+            path === `${self.config.apiPrefix}/chat/cancel`
+          ) {
+            if (req.method !== "POST") {
+              return Response.json(
+                { error: "Method not allowed", code: "METHOD_NOT_ALLOWED" } as ErrorResponse,
+                { status: 405, headers: corsHeaders }
+              );
+            }
+
+            const body = await req.json().catch(() => null);
+            if (
+              !body ||
+              typeof body !== "object" ||
+              !("conversationId" in body) ||
+              typeof (body as { conversationId: string }).conversationId !== "string"
+            ) {
+              return Response.json(
+                { error: "conversationId is required", code: "INVALID_BODY" } as ErrorResponse,
+                { status: 400, headers: corsHeaders }
+              );
+            }
+
+            const cancelled = self.orchestrator.cancelRequest(
+              (body as { conversationId: string }).conversationId
+            );
+
+            return Response.json(
+              { ok: true, cancelled },
+              { headers: corsHeaders }
+            );
+          }
+
           // Conversations list endpoint
           if (
             path === "/conversations" ||
@@ -353,6 +388,7 @@ export class OpenKrowServer {
     console.log(`\nEndpoints:`);
     console.log(`  GET  /health                       - Health check (no auth)`);
     console.log(`  POST /chat                         - Send a message`);
+    console.log(`  POST /chat/cancel                  - Cancel active request`);
     console.log(`  GET  /conversations                - List conversations`);
     console.log(`  GET  /conversations/:id/messages    - Conversation history`);
     console.log(`  GET  /auth/keys                    - List stored API keys`);

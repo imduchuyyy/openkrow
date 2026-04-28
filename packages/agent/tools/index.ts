@@ -5,7 +5,7 @@
  */
 
 import type { Tool, ToolDefinition, ToolResult } from "../types/index.js";
-import type { SkillManager } from "../skills/index.js";
+import type { SkillManager } from "@openkrow/skill";
 import type { QuestionHandler } from "./question.js";
 import type { TodoItem } from "./todo.js";
 
@@ -133,6 +133,5 @@ export type { TodoItem } from "./todo.js";
 export { createWebFetchTool } from "./webfetch.js";
 export { createWebSearchTool } from "./websearch.js";
 export { createSkillTool } from "./skill.js";
-export type { SkillContent, SkillLoader } from "./skill.js";
 export { createQuestionTool } from "./question.js";
 export type { QuestionOption, QuestionPrompt, QuestionHandler } from "./question.js";

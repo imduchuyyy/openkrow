@@ -1,34 +1,17 @@
 /**
  * SkillTool — Load a specialized skill by name.
  *
- * Delegates to the SkillManager to find the skill, then reads the
- * skill content (SKILL.md or similar) and returns it to the LLM.
- * Skill management (install, discovery) is handled elsewhere.
+ * Delegates to the SkillManager to find the skill and load its content.
+ * Skill management (install, discovery) is handled by @openkrow/skill.
  */
 
 import { createTool, loadDescription, ok, fail } from "./create-tool.js";
 import type { Tool } from "../types/index.js";
-import type { SkillManager } from "../skills/index.js";
+import type { SkillManager } from "@openkrow/skill";
 
 const DESCRIPTION = loadDescription(import.meta.url, "skill.txt");
 
-export interface SkillContent {
-  name: string;
-  content: string;
-  directory?: string;
-}
-
-/**
- * Callback to load full skill content by name.
- * The actual loading logic (reading SKILL.md, listing files, etc.)
- * is provided by the caller since it depends on the skill storage backend.
- */
-export type SkillLoader = (name: string) => Promise<SkillContent | undefined>;
-
-export function createSkillTool(
-  skillManager: SkillManager,
-  loader?: SkillLoader,
-): Tool {
+export function createSkillTool(skillManager: SkillManager): Tool {
   return createTool({
     name: "skill",
     description: DESCRIPTION,
@@ -57,32 +40,25 @@ export function createSkillTool(
         return fail(`Skill "${name}" is disabled.`);
       }
 
-      // If a loader is provided, load the full content
-      if (loader) {
-        const content = await loader(name);
-        if (!content) {
-          return fail(`Failed to load content for skill "${name}".`);
-        }
-
-        const output = [
-          `<skill_content name="${content.name}">`,
-          `# Skill: ${content.name}`,
-          "",
-          content.content.trim(),
-          "",
-          content.directory ? `Base directory for this skill: ${content.directory}` : "",
-          `</skill_content>`,
-        ]
-          .filter(Boolean)
-          .join("\n");
-
-        return ok(output);
+      // Load full content via SkillManager
+      const content = await skillManager.loadContent(name);
+      if (!content) {
+        return fail(`Failed to load content for skill "${name}".`);
       }
 
-      // Fallback: return basic skill info
-      return ok(
-        `<skill_content name="${skill.name}">\n# Skill: ${skill.name}\n\n${skill.description}\n</skill_content>`,
-      );
+      const output = [
+        `<skill_content name="${content.name}">`,
+        `# Skill: ${content.name}`,
+        "",
+        content.content.trim(),
+        "",
+        content.directory ? `Base directory for this skill: ${content.directory}` : "",
+        `</skill_content>`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      return ok(output);
     },
   });
 }

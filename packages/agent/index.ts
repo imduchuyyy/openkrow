@@ -2,8 +2,8 @@
  * @openkrow/agent — Agent runtime package
  *
  * Core agent class with async generator support for streaming responses.
- * Implements the full agentic loop: context assembly → LLM call → tool
- * execution → repeat until a text-only response or max turns.
+ * Implements the query loop: context assembly → LLM call → observe content
+ * for tool_use blocks (needsFollowUp) → tool execution → repeat until done.
  */
 
 import { EventEmitter } from "eventemitter3";
@@ -37,13 +37,6 @@ import { ToolManager } from "./tools/index.js";
 import type { ToolManagerOptions } from "./tools/index.js";
 import { ContextManager } from "./context/index.js";
 import { toLLMMessages, extractToolCalls, hasToolCalls } from "./context/convert.js";
-
-// ---------------------------------------------------------------------------
-// Defaults
-// ---------------------------------------------------------------------------
-
-const DEFAULT_MAX_TURNS = 25;
-const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 10;
 
 /**
  * Agent — Core agent class with async generator support.
@@ -82,6 +75,7 @@ export class Agent extends EventEmitter<AgentEvents> {
       this.context.configurePrompt({
         provider: config.llm?.provider,
         userName: config.userName,
+        skillsSnippet: config.skillManager?.getPromptSnippet(),
       });
     }
 
@@ -195,13 +189,9 @@ export class Agent extends EventEmitter<AgentEvents> {
    */
   private async executeToolCalls(llmMsg: LLMAssistantMessage): Promise<ToolResultMessage[]> {
     const toolCalls = extractToolCalls(llmMsg);
-    const maxCalls = this.config.maxToolCallsPerTurn ?? DEFAULT_MAX_TOOL_CALLS_PER_TURN;
-    const calls = toolCalls.slice(0, maxCalls);
-
-    const results: ToolResultMessage[] = [];
 
     // Execute all tool calls in parallel
-    const executions = calls.map(async (tc) => {
+    const executions = toolCalls.map(async (tc) => {
       this.emit("tool_call", { id: tc.id, name: tc.name, arguments: tc.arguments });
 
       let args: Record<string, unknown>;
@@ -232,15 +222,17 @@ export class Agent extends EventEmitter<AgentEvents> {
     });
 
     const settled = await Promise.all(executions);
-    results.push(...settled);
-    return results;
+    return settled;
   }
 
   // ---- Public API ----
 
   /**
    * Run a single prompt and return the full response.
-   * Implements the full agentic loop with tool calling.
+   *
+   * Implements the query loop: the agent keeps running until the LLM produces
+   * a response with no tool_use blocks (needsFollowUp === false).
+   * An optional maxTurns safety net prevents runaway loops.
    */
   async run(input: string, options?: RunOptions): Promise<string> {
     if (this._isRunning) {
@@ -261,11 +253,16 @@ export class Agent extends EventEmitter<AgentEvents> {
     const userMsg: Omit<UserMessage, "timestamp"> = { role: "user", content: input };
     this.context.addMessage(userMsg);
 
-    try {
-      const maxTurns = this.config.maxTurns ?? DEFAULT_MAX_TURNS;
+    let turnCount = 0;
 
-      for (let turn = 0; turn < maxTurns; turn++) {
-        // Assemble context
+    try {
+      while (true) {
+        // Safety net: max turns prevents death spirals
+        if (options?.maxTurns && turnCount >= options.maxTurns) {
+          return "[Agent reached maximum turn limit]";
+        }
+
+        // 1. Context Assembly
         const assembled = await this.context.contextAssembly(this.buildAssemblyOptions(model));
         const llmMessages = toLLMMessages(assembled.messages);
         const context: LLMContext = {
@@ -274,7 +271,7 @@ export class Agent extends EventEmitter<AgentEvents> {
           tools: this.getLLMToolDefinitions(),
         };
 
-        // Call LLM
+        // 2. Call LLM
         const llmResponse = await llmComplete(model, context, streamOpts);
 
         // Persist assistant message
@@ -285,22 +282,19 @@ export class Agent extends EventEmitter<AgentEvents> {
         const persistedMsg = this.context.addMessage(assistantMsg);
         this.emit("message", persistedMsg);
 
-        // Check for tool calls
-        if (hasToolCalls(llmResponse)) {
+        // 3. Observe content for tool_use blocks — derive needsFollowUp
+        const needsFollowUp = hasToolCalls(llmResponse);
+
+        if (needsFollowUp) {
+          // 4. Tool Execution
           await this.executeToolCalls(llmResponse);
-          // Continue the loop for another LLM turn
+          turnCount++;
           continue;
         }
 
-        // No tool calls — we're done
+        // 5. No tool calls — normal completion
         return getTextContent(llmResponse);
       }
-
-      // Exceeded max turns
-      return getTextContent({
-        role: "assistant",
-        content: [{ type: "text", text: "[Agent reached maximum turn limit]" }],
-      });
     } finally {
       this._isRunning = false;
       this.emit("done");
@@ -309,10 +303,10 @@ export class Agent extends EventEmitter<AgentEvents> {
 
   /**
    * Stream a response token-by-token using an async generator.
-   * Implements the full agentic loop with tool calling.
    *
-   * Yields text deltas. Tool calls are handled internally (emitted as events).
-   * The final assistant message is persisted after each LLM turn.
+   * Implements the query loop with pull-based streaming: yields text deltas
+   * to the consumer. Tool calls are handled internally (emitted as events).
+   * The loop continues while needsFollowUp is true (tool_use blocks observed).
    */
   async *stream(input: string, options?: RunOptions): AsyncGenerator<string, void, unknown> {
     if (this._isRunning) {
@@ -333,11 +327,17 @@ export class Agent extends EventEmitter<AgentEvents> {
     const userMsg: Omit<UserMessage, "timestamp"> = { role: "user", content: input };
     this.context.addMessage(userMsg);
 
-    try {
-      const maxTurns = this.config.maxTurns ?? DEFAULT_MAX_TURNS;
+    let turnCount = 0;
 
-      for (let turn = 0; turn < maxTurns; turn++) {
-        // Assemble context
+    try {
+      while (true) {
+        // Safety net: max turns prevents death spirals
+        if (options?.maxTurns && turnCount >= options.maxTurns) {
+          yield "[Agent reached maximum turn limit]";
+          return;
+        }
+
+        // 1. Context Assembly
         const assembled = await this.context.contextAssembly(this.buildAssemblyOptions(model));
         const llmMessages = toLLMMessages(assembled.messages);
         const context: LLMContext = {
@@ -346,7 +346,7 @@ export class Agent extends EventEmitter<AgentEvents> {
           tools: this.getLLMToolDefinitions(),
         };
 
-        // Stream from LLM
+        // 2. Stream from LLM
         const eventStream = llmStream(model, context, streamOpts);
 
         for await (const event of eventStream) {
@@ -375,19 +375,19 @@ export class Agent extends EventEmitter<AgentEvents> {
         const persistedMsg = this.context.addMessage(assistantMsg);
         this.emit("message", persistedMsg);
 
-        // Check for tool calls
-        if (hasToolCalls(llmResponse)) {
+        // 3. Observe content for tool_use blocks — derive needsFollowUp
+        const needsFollowUp = hasToolCalls(llmResponse);
+
+        if (needsFollowUp) {
+          // 4. Tool Execution
           await this.executeToolCalls(llmResponse);
-          // Continue the loop for another LLM turn
+          turnCount++;
           continue;
         }
 
-        // No tool calls — we're done
+        // 5. No tool calls — normal completion
         return;
       }
-
-      // Exceeded max turns
-      yield "[Agent reached maximum turn limit]";
     } finally {
       this._isRunning = false;
       this.emit("done");
@@ -417,8 +417,6 @@ export type {
   CreateToolOptions,
   ToolManagerOptions,
   TodoItem,
-  SkillContent,
-  SkillLoader,
   QuestionOption,
   QuestionPrompt,
   QuestionHandler,
@@ -427,7 +425,8 @@ export { ContextManager } from "./context/index.js";
 export type { ContextManagerOptions } from "./context/index.js";
 export { PersonalityManager } from "./personality/index.js";
 export { WorkspaceManager } from "@openkrow/workspace";
-export { SkillManager } from "./skills/index.js";
+export { SkillManager } from "@openkrow/skill";
+export type { Skill, SkillContent, SkillDefinition } from "@openkrow/skill";
 
 // Re-export types
 export type {
@@ -466,4 +465,3 @@ export type { PromptAssemblyOptions } from "./context/prompt.js";
 export { toLLMMessage, toLLMMessages, extractToolCalls, hasToolCalls } from "./context/convert.js";
 
 export type { UserPersonality } from "./personality/index.js";
-export type { Skill } from "./skills/index.js";

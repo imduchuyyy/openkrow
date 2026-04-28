@@ -55,6 +55,8 @@ export interface PromptAssemblyOptions {
   workspaceContext?: string;
   /** Workspace path, shown in environment section */
   workspacePath?: string;
+  /** Skills prompt snippet (available skills listing), injected before custom suffix */
+  skillsSnippet?: string;
 }
 
 /**
@@ -69,6 +71,7 @@ export function assembleSystemPrompt(options: PromptAssemblyOptions = {}): strin
     userName,
     workspaceContext,
     workspacePath,
+    skillsSnippet,
     currentDate = new Date().toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
@@ -112,7 +115,12 @@ export function assembleSystemPrompt(options: PromptAssemblyOptions = {}): strin
     sections.push(`# Workspace Context\n${workspaceContext.trim()}`);
   }
 
-  // 6. Custom suffix
+  // 6. Skills listing
+  if (skillsSnippet?.trim()) {
+    sections.push(skillsSnippet.trim());
+  }
+
+  // 7. Custom suffix
   if (customSuffix?.trim()) {
     sections.push(customSuffix.trim());
   }

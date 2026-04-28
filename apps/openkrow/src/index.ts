@@ -9,7 +9,6 @@
 // Library exports
 // ---------------------------------------------------------------------------
 
-export { loadConfig, saveConfig, resetConfig, getConfigPath, type OpenKrowConfig } from "./config/loader.js";
 export { VERSION } from "./version.js";
 
 // Config (re-export from @openkrow/config)
