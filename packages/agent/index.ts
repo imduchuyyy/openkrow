@@ -65,10 +65,11 @@ export class Agent extends EventEmitter<AgentEvents> {
       questionHandler: config.questionHandler,
     });
 
-    // ContextManager owns persistence — pass database + conversationId
+    // ContextManager owns persistence — pass database + conversationId + workspace
     this.context = new ContextManager({
       database: config.database,
       conversationId: config.conversationId,
+      workspace: config.workspace,
     });
 
     // Configure prompt assembly
@@ -409,7 +410,7 @@ export type {
 export { ContextManager } from "./context/index.js";
 export type { ContextManagerOptions } from "./context/index.js";
 export { PersonalityManager } from "./personality/index.js";
-export { WorkspaceManager } from "./workspace/index.js";
+export { WorkspaceManager } from "@openkrow/workspace";
 export { SkillManager } from "./skills/index.js";
 
 // Re-export types
@@ -433,6 +434,9 @@ export type {
   SummarizerFn,
 } from "./types/index.js";
 
+// Re-export workspace types
+export type { WorkspaceContext, Job, ScheduledTask } from "@openkrow/workspace";
+
 // Re-export token utilities
 export { estimateTokens, estimateMessageTokens, estimateTotalTokens } from "./context/index.js";
 
@@ -444,5 +448,4 @@ export type { PromptAssemblyOptions } from "./context/prompt.js";
 export { toLLMMessage, toLLMMessages, extractToolCalls, hasToolCalls } from "./context/convert.js";
 
 export type { UserPersonality } from "./personality/index.js";
-export type { WorkspaceContext } from "./workspace/index.js";
 export type { Skill } from "./skills/index.js";

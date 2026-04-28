@@ -21,6 +21,7 @@
   "dependencies": {
     "@openkrow/database": "*",
     "@openkrow/llm": "*",
+    "@openkrow/workspace": "*",
     "eventemitter3": "^5.0.1"
   },
   "devDependencies": {

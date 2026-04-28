@@ -40,6 +40,8 @@ export interface AgentConfig {
   skillManager?: import("../skills/index.js").SkillManager;
   /** Question handler callback — enables the question tool when provided */
   questionHandler?: import("../tools/question.js").QuestionHandler;
+  /** WorkspaceManager instance — context.md is injected into every LLM call */
+  workspace?: import("@openkrow/workspace").WorkspaceManager;
 }
 
 // ---------------------------------------------------------------------------
