@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/imduchuyyy/openkrow/actions"><img src="https://github.com/imduchuyyy/openkrow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/openkrow/openkrow/actions"><img src="https://github.com/openkrow/openkrow/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-f472b6" alt="Bun"></a>
 </p>
@@ -51,7 +51,7 @@ It is built for **office workers, students, and researchers** who spend their da
 ### Install and Run
 
 ```bash
-git clone https://github.com/imduchuyyy/openkrow.git
+git clone https://github.com/openkrow/openkrow.git
 cd openkrow
 bun install
 bun run build
