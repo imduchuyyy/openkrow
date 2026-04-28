@@ -9,6 +9,7 @@ interface ServerOptions {
   host?: string;
   model?: string;
   provider?: string;
+  workspace?: string;
 }
 
 export async function serverCommand(options: ServerOptions): Promise<void> {
@@ -25,7 +26,7 @@ export async function serverCommand(options: ServerOptions): Promise<void> {
       },
       provider: (options.provider as "openai" | "anthropic" | "google") ?? "anthropic",
       model: options.model,
-      workspacePath: process.cwd(),
+      workspacePath: options.workspace ?? process.cwd(),
     });
 
     // Handle graceful shutdown

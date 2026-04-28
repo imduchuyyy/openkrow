@@ -6,12 +6,12 @@
 
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import * as path from "path";
-import { createTool, loadDescription, ok, fail } from "./create-tool.js";
+import { createTool, loadDescription, ok, fail, resolveAndGuard } from "./create-tool.js";
 import type { Tool } from "../types/index.js";
 
 const DESCRIPTION = loadDescription(import.meta.url, "write.txt");
 
-export function createWriteTool(): Tool {
+export function createWriteTool(workspacePath?: string): Tool {
   return createTool({
     name: "write",
     description: DESCRIPTION,
@@ -36,7 +36,12 @@ export function createWriteTool(): Tool {
       if (!filePath) return fail("filePath is required");
       if (content === undefined || content === null) return fail("content is required");
 
-      const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+      let resolved: string;
+      try {
+        resolved = resolveAndGuard(filePath, workspacePath);
+      } catch (msg) {
+        return fail(msg as string);
+      }
 
       try {
         const dir = path.dirname(resolved);

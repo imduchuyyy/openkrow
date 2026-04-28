@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, statSync, createReadStream } from "fs";
 import { createInterface } from "readline";
 import * as path from "path";
-import { createTool, loadDescription, ok, fail } from "./create-tool.js";
+import { createTool, loadDescription, ok, fail, resolveAndGuard } from "./create-tool.js";
 import type { Tool } from "../types/index.js";
 
 const DESCRIPTION = loadDescription(import.meta.url, "read.txt");
@@ -63,7 +63,7 @@ async function readLines(
   return { raw, count, cut, more, offset: opts.offset };
 }
 
-export function createReadTool(): Tool {
+export function createReadTool(workspacePath?: string): Tool {
   return createTool({
     name: "read",
     description: DESCRIPTION,
@@ -93,7 +93,12 @@ export function createReadTool(): Tool {
       if (!filePath) return fail("filePath is required");
       if (offset < 1) return fail("offset must be >= 1");
 
-      const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+      let resolved: string;
+      try {
+        resolved = resolveAndGuard(filePath, workspacePath);
+      } catch (msg) {
+        return fail(msg as string);
+      }
 
       let stat;
       try {

@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from "fs";
-import { resolve, dirname } from "path";
+import { resolve, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 import type { Tool, ToolDefinition, ToolResult } from "../types/index.js";
 
@@ -57,4 +57,23 @@ export function ok(output: string): ToolResult {
  */
 export function fail(error: string): ToolResult {
   return { success: false, output: "", error };
+}
+
+/**
+ * Resolve a file path (relative to cwd) and validate it's inside the workspace.
+ * Returns the resolved absolute path, or throws an error message string.
+ */
+export function resolveAndGuard(filePath: string, workspacePath: string | undefined, cwd?: string): string {
+  const base = cwd ?? workspacePath ?? ".";
+  const resolved = filePath.startsWith("/") ? resolve(filePath) : resolve(base, filePath);
+
+  if (workspacePath) {
+    const absWorkspace = resolve(workspacePath);
+    const rel = relative(absWorkspace, resolved);
+    if (rel.startsWith("..") || resolve(absWorkspace, rel) !== resolved) {
+      throw `Access denied: "${resolved}" is outside the workspace "${absWorkspace}"`;
+    }
+  }
+
+  return resolved;
 }

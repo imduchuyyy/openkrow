@@ -26,6 +26,7 @@
   "dependencies": {
     "@openkrow/llm": "*",
     "@openkrow/agent": "*",
+    "@openkrow/workspace": "*",
     "@openkrow/database": "*",
     "@openkrow/tui": "*",
     "commander": "^13.1.0",

@@ -3,6 +3,7 @@ import { OpenKrow } from "../openkrow.js";
 interface RunOpts {
   model?: string;
   provider?: string;
+  workspace?: string;
   tools?: boolean;
 }
 
@@ -14,6 +15,7 @@ export async function runCommand(
     provider: opts.provider as "openai" | "anthropic" | "google" | undefined,
     model: opts.model,
     enableTools: opts.tools !== false,
+    workspacePath: opts.workspace,
   });
 
   try {

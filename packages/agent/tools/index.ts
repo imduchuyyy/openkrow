@@ -24,8 +24,10 @@ import { createQuestionTool } from "./question.js";
 // ---------------------------------------------------------------------------
 
 export interface ToolManagerOptions {
-  /** Working directory for bash tool (defaults to process.cwd()) */
+  /** Working directory for bash tool (defaults to workspacePath or process.cwd()) */
   cwd?: string;
+  /** Workspace root path — all file tools are sandboxed to this directory */
+  workspacePath?: string;
   /** SkillManager instance for the skill tool (omit to skip skill tool) */
   skillManager?: SkillManager;
   /** Callback for question tool (omit to skip question tool) */
@@ -44,11 +46,15 @@ export class ToolManager {
    * Auto-register all built-in tools based on provided dependencies.
    */
   private registerBuiltins(opts: ToolManagerOptions): void {
-    // Always-available tools (no deps)
-    this.register(createReadTool());
-    this.register(createWriteTool());
-    this.register(createEditTool());
-    this.register(createBashTool(opts.cwd));
+    const wp = opts.workspacePath;
+
+    // File tools — sandboxed to workspace when workspacePath is set
+    this.register(createReadTool(wp));
+    this.register(createWriteTool(wp));
+    this.register(createEditTool(wp));
+    this.register(createBashTool(opts.cwd ?? wp, wp));
+
+    // Network tools — no workspace restriction
     this.register(createWebFetchTool());
     this.register(createWebSearchTool());
 
@@ -115,7 +121,7 @@ export { ToolManager as ToolRegistry };
 // Re-export tool factories and helpers
 // ---------------------------------------------------------------------------
 
-export { createTool, loadDescription, ok, fail } from "./create-tool.js";
+export { createTool, loadDescription, ok, fail, resolveAndGuard } from "./create-tool.js";
 export type { CreateToolOptions } from "./create-tool.js";
 
 export { createReadTool } from "./read.js";

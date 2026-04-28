@@ -61,6 +61,7 @@ export class Agent extends EventEmitter<AgentEvents> {
     this.config = config;
     this.tools = new ToolManager({
       cwd: config.cwd,
+      workspacePath: config.workspace?.getPath() ?? undefined,
       skillManager: config.skillManager,
       questionHandler: config.questionHandler,
     });

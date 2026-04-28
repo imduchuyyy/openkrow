@@ -7,6 +7,7 @@ interface ChatOpts {
   model?: string;
   provider?: string;
   system?: string;
+  workspace?: string;
   tools?: boolean;
   stream?: boolean;
 }
@@ -18,6 +19,7 @@ export async function chatCommand(opts: ChatOpts): Promise<void> {
     systemPrompt: opts.system,
     enableTools: opts.tools !== false,
     enableStreaming: opts.stream !== false,
+    workspacePath: opts.workspace,
   });
 
   const config = krow.getConfig();

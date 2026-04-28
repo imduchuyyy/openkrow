@@ -1,8 +1,8 @@
 import { Agent } from "@openkrow/agent";
+import { WorkspaceManager } from "@openkrow/workspace";
 import type { LLMConfig } from "@openkrow/llm";
 import type { OpenKrowConfig } from "./config/loader.js";
 import { loadConfig } from "./config/loader.js";
-import { registerBuiltinTools } from "./tools.js";
 
 const SYSTEM_PROMPT = `You are OpenKrow, an expert AI assistant running on the user's desktop.
 
@@ -24,20 +24,36 @@ Principles:
 export class OpenKrow {
   private agent: Agent;
   private config: OpenKrowConfig;
+  private workspace: WorkspaceManager | null;
 
-  private constructor(agent: Agent, config: OpenKrowConfig) {
+  private constructor(
+    agent: Agent,
+    config: OpenKrowConfig,
+    workspace: WorkspaceManager | null
+  ) {
     this.agent = agent;
     this.config = config;
+    this.workspace = workspace;
   }
 
   /**
    * Create and initialize an OpenKrow instance.
    * Loads config from disk/env, sets up the LLM client, and registers tools.
+   *
+   * When `workspacePath` is provided (via overrides or config), a WorkspaceManager
+   * is initialised and passed to the Agent. Tools are auto-registered by ToolManager.
    */
   static async create(
     overrides?: Partial<OpenKrowConfig>
   ): Promise<OpenKrow> {
     const config = await loadConfig(overrides);
+
+    // Set up workspace if a path is configured
+    let workspaceManager: WorkspaceManager | null = null;
+    if (config.workspacePath) {
+      workspaceManager = new WorkspaceManager();
+      workspaceManager.init(config.workspacePath);
+    }
 
     const llmConfig: LLMConfig = {
       provider: config.provider,
@@ -54,13 +70,12 @@ export class OpenKrow {
       customPrompt: config.systemPrompt ?? SYSTEM_PROMPT,
       llm: llmConfig,
       maxTurns: config.maxTurns,
+      ...(workspaceManager ? { workspace: workspaceManager } : {}),
     });
 
-    if (config.enableTools) {
-      registerBuiltinTools(agent);
-    }
+    // Tools are auto-registered by ToolManager — no manual registration needed.
 
-    return new OpenKrow(agent, config);
+    return new OpenKrow(agent, config, workspaceManager);
   }
 
   /**
@@ -89,5 +104,12 @@ export class OpenKrow {
    */
   getConfig(): Readonly<OpenKrowConfig> {
     return this.config;
+  }
+
+  /**
+   * Access the workspace manager (null if no workspace configured).
+   */
+  getWorkspace(): WorkspaceManager | null {
+    return this.workspace;
   }
 }

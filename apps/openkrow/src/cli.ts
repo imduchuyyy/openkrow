@@ -30,6 +30,7 @@ program
     "LLM provider (openai | anthropic | google)"
   )
   .option("-s, --system <prompt>", "Custom system prompt")
+  .option("-w, --workspace <path>", "Workspace directory path")
   .option("--no-tools", "Disable tool calling")
   .option("--no-stream", "Disable streaming (wait for full response)")
   .action(chatCommand);
@@ -39,6 +40,7 @@ program
   .description("Run a single prompt non-interactively and exit")
   .option("-m, --model <model>", "LLM model to use")
   .option("-p, --provider <provider>", "LLM provider")
+  .option("-w, --workspace <path>", "Workspace directory path")
   .option("--no-tools", "Disable tool calling")
   .action(runCommand);
 
@@ -49,6 +51,7 @@ program
   .option("--host <host>", "Host to bind to", "localhost")
   .option("-m, --model <model>", "LLM model to use")
   .option("-p, --provider <provider>", "LLM provider (openai | anthropic | google)")
+  .option("-w, --workspace <path>", "Workspace directory path")
   .action(serverCommand);
 
 program

@@ -116,6 +116,7 @@ describe("Agent construction", () => {
       name: "test-agent",
       llm: { provider: "anthropic", model: "claude-sonnet-4-20250514" },
     });
+    const builtinCount = agent.tools.getDefinitions().length;
     const tool: Tool = {
       definition: {
         name: "echo",
@@ -126,7 +127,7 @@ describe("Agent construction", () => {
     };
     agent.tools.register(tool);
     assert.strictEqual(agent.tools.has("echo"), true);
-    assert.strictEqual(agent.tools.getDefinitions().length, 1);
+    assert.strictEqual(agent.tools.getDefinitions().length, builtinCount + 1);
   });
 
   it("should throw run() without llm config", async () => {

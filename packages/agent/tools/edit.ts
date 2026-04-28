@@ -8,7 +8,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import * as path from "path";
-import { createTool, loadDescription, ok, fail } from "./create-tool.js";
+import { createTool, loadDescription, ok, fail, resolveAndGuard } from "./create-tool.js";
 import type { Tool } from "../types/index.js";
 
 const DESCRIPTION = loadDescription(import.meta.url, "edit.txt");
@@ -113,7 +113,7 @@ function replace(content: string, oldString: string, newString: string, replaceA
   throw new Error("Found multiple matches for oldString. Provide more surrounding context to make the match unique.");
 }
 
-export function createEditTool(): Tool {
+export function createEditTool(workspacePath?: string): Tool {
   return createTool({
     name: "edit",
     description: DESCRIPTION,
@@ -147,7 +147,12 @@ export function createEditTool(): Tool {
 
       if (!filePath) return fail("filePath is required");
 
-      const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+      let resolved: string;
+      try {
+        resolved = resolveAndGuard(filePath, workspacePath);
+      } catch (msg) {
+        return fail(msg as string);
+      }
 
       // Empty oldString means create/overwrite (same as OpenCode)
       if (oldString === "") {

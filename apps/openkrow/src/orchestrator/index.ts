@@ -16,6 +16,7 @@ import {
   type Conversation,
 } from "@openkrow/database";
 import { Agent } from "@openkrow/agent";
+import { WorkspaceManager } from "@openkrow/workspace";
 import type { LLMConfig } from "@openkrow/llm";
 
 export interface OrchestratorConfig {
@@ -29,6 +30,8 @@ export interface OrchestratorConfig {
   maxTurns?: number;
   /** Enable tools */
   enableTools?: boolean;
+  /** Workspace directory path (optional — enables workspace features) */
+  workspacePath?: string;
 }
 
 /**
@@ -39,10 +42,17 @@ export class Orchestrator {
   private config: OrchestratorConfig;
   private agents: Map<string, Agent> = new Map();
   private currentUser: User | null = null;
+  private workspace: WorkspaceManager | null = null;
 
   private constructor(db: DatabaseClient, config: OrchestratorConfig) {
     this.db = db;
     this.config = config;
+
+    // Initialize workspace if path is provided
+    if (config.workspacePath) {
+      this.workspace = new WorkspaceManager();
+      this.workspace.init(config.workspacePath);
+    }
   }
 
   /** Get the database client (for direct access by the app) */
@@ -155,6 +165,7 @@ export class Orchestrator {
         database: this.db,
         conversationId,
         maxTurns: this.config.maxTurns,
+        ...(this.workspace ? { workspace: this.workspace } : {}),
       });
 
       this.agents.set(key, agent);
@@ -274,5 +285,12 @@ export class Orchestrator {
       this.endSession(sessionId);
     }
     this.agents.clear();
+  }
+
+  /**
+   * Access the workspace manager (null if no workspace configured).
+   */
+  getWorkspace(): WorkspaceManager | null {
+    return this.workspace;
   }
 }

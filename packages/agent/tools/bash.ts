@@ -8,7 +8,7 @@
 import { spawn } from "child_process";
 import * as os from "os";
 import * as path from "path";
-import { createTool, loadDescription, ok, fail } from "./create-tool.js";
+import { createTool, loadDescription, ok, fail, resolveAndGuard } from "./create-tool.js";
 import type { Tool } from "../types/index.js";
 
 const RAW_DESCRIPTION = loadDescription(import.meta.url, "bash.txt");
@@ -24,7 +24,7 @@ function getShell(): { shell: string; name: string } {
   return { shell, name: path.basename(shell) };
 }
 
-export function createBashTool(workingDirectory?: string): Tool {
+export function createBashTool(workingDirectory?: string, workspacePath?: string): Tool {
   const { shell, name } = getShell();
   const cwd = workingDirectory ?? process.cwd();
 
@@ -73,7 +73,13 @@ export function createBashTool(workingDirectory?: string): Tool {
       if (!command) return fail("command is required");
       if (timeout < 0) return fail("timeout must be a positive number");
 
-      const resolvedCwd = path.isAbsolute(workdir) ? workdir : path.resolve(cwd, workdir);
+      let resolvedCwd: string;
+      try {
+        const target = path.isAbsolute(workdir) ? workdir : path.resolve(cwd, workdir);
+        resolvedCwd = resolveAndGuard(target, workspacePath, cwd);
+      } catch (msg) {
+        return fail(msg as string);
+      }
 
       return new Promise((resolve) => {
         const chunks: Buffer[] = [];

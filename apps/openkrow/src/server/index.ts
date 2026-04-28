@@ -15,8 +15,14 @@ import {
   type ServerConfig,
   type HealthResponse,
   type ErrorResponse,
+  type ApiKeySetRequest,
+  type ApiKeyListResponse,
+  type ModelConfigResponse,
+  type ModelConfigSetRequest,
+  type ModelListResponse,
 } from "./types.js";
 import { VERSION } from "../version.js";
+import { getAllModels, getProviders } from "@openkrow/llm";
 
 export interface OpenKrowServerOptions {
   config?: Partial<ServerConfig>;
@@ -202,6 +208,127 @@ export class OpenKrowServer {
             return Response.json({ messages }, { headers: corsHeaders });
           }
 
+          // ---------------------------------------------------------------
+          // Auth: API Key management
+          // ---------------------------------------------------------------
+
+          // GET /auth/keys — list stored API keys (masked)
+          if (
+            (path === "/auth/keys" || path === `${self.config.apiPrefix}/auth/keys`) &&
+            req.method === "GET"
+          ) {
+            const allSettings = self.orchestrator.database.settings.getAllAsObject();
+            const keys: ApiKeyListResponse["keys"] = [];
+            for (const [k, v] of Object.entries(allSettings)) {
+              if (k.startsWith("apikey:")) {
+                const provider = k.slice("apikey:".length);
+                keys.push({
+                  provider,
+                  masked: v.length > 8 ? v.slice(0, 4) + "..." + v.slice(-4) : "****",
+                });
+              }
+            }
+            return Response.json({ keys } as ApiKeyListResponse, { headers: corsHeaders });
+          }
+
+          // POST /auth/keys — store an API key for a provider
+          if (
+            (path === "/auth/keys" || path === `${self.config.apiPrefix}/auth/keys`) &&
+            req.method === "POST"
+          ) {
+            const body = await req.json().catch(() => null);
+            if (
+              !body ||
+              typeof body !== "object" ||
+              !("provider" in body) ||
+              !("apiKey" in body) ||
+              typeof (body as ApiKeySetRequest).provider !== "string" ||
+              typeof (body as ApiKeySetRequest).apiKey !== "string"
+            ) {
+              return Response.json(
+                { error: "provider and apiKey are required strings", code: "INVALID_BODY" } as ErrorResponse,
+                { status: 400, headers: corsHeaders }
+              );
+            }
+            const { provider: prov, apiKey: key } = body as ApiKeySetRequest;
+            self.orchestrator.setSetting(`apikey:${prov}`, key);
+            return Response.json({ ok: true, provider: prov }, { headers: corsHeaders });
+          }
+
+          // DELETE /auth/keys/:provider — remove an API key
+          const deleteKeyMatch = path.match(/^(?:\/api)?\/auth\/keys\/([^/]+)$/);
+          if (deleteKeyMatch && req.method === "DELETE") {
+            const provider = deleteKeyMatch[1];
+            const deleted = self.orchestrator.database.settings.delete(`apikey:${provider}`);
+            if (!deleted) {
+              return Response.json(
+                { error: `No API key stored for provider: ${provider}`, code: "NOT_FOUND" } as ErrorResponse,
+                { status: 404, headers: corsHeaders }
+              );
+            }
+            return Response.json({ ok: true, provider }, { headers: corsHeaders });
+          }
+
+          // ---------------------------------------------------------------
+          // Model configuration
+          // ---------------------------------------------------------------
+
+          // GET /models — list all available models
+          if (
+            (path === "/models" || path === `${self.config.apiPrefix}/models`) &&
+            req.method === "GET"
+          ) {
+            const allModels = getAllModels();
+            const providers = getProviders();
+            const response: ModelListResponse = {
+              models: allModels.map((m) => ({
+                id: m.id,
+                name: m.name,
+                provider: m.provider,
+                contextWindow: m.contextWindow,
+                maxTokens: m.maxTokens,
+                supportsTools: m.supportsTools,
+              })),
+              providers: providers as string[],
+            };
+            return Response.json(response, { headers: corsHeaders });
+          }
+
+          // GET /config/model — get current model config
+          if (
+            (path === "/config/model" || path === `${self.config.apiPrefix}/config/model`) &&
+            req.method === "GET"
+          ) {
+            const provider = self.orchestrator.getSetting("config:provider") ?? "anthropic";
+            const model = self.orchestrator.getSetting("config:model") ?? "claude-sonnet-4-20250514";
+            return Response.json({ provider, model } as ModelConfigResponse, { headers: corsHeaders });
+          }
+
+          // POST /config/model — set current model config
+          if (
+            (path === "/config/model" || path === `${self.config.apiPrefix}/config/model`) &&
+            req.method === "POST"
+          ) {
+            const body = await req.json().catch(() => null);
+            if (
+              !body ||
+              typeof body !== "object" ||
+              !("provider" in body) ||
+              !("model" in body) ||
+              typeof (body as ModelConfigSetRequest).provider !== "string" ||
+              typeof (body as ModelConfigSetRequest).model !== "string"
+            ) {
+              return Response.json(
+                { error: "provider and model are required strings", code: "INVALID_BODY" } as ErrorResponse,
+                { status: 400, headers: corsHeaders }
+              );
+            }
+            const { provider: prov, model: mod } = body as ModelConfigSetRequest;
+            self.orchestrator.setSetting("config:provider", prov);
+            self.orchestrator.setSetting("config:model", mod);
+            return Response.json({ ok: true, provider: prov, model: mod }, { headers: corsHeaders });
+          }
+
           // 404 for unknown routes
           return Response.json(
             { error: "Not found", code: "NOT_FOUND" } as ErrorResponse,
@@ -221,10 +348,16 @@ export class OpenKrowServer {
     console.log(`OpenKrow server started on http://${this.config.host}:${this.config.port}`);
     console.log(`Workspace: ${this.workspacePath}`);
     console.log(`\nEndpoints:`);
-    console.log(`  POST /chat - Send a message to the agent`);
-    console.log(`  GET  /health - Health check`);
-    console.log(`  GET  /conversations - List recent conversations`);
-    console.log(`  GET  /conversations/:id/messages - Get conversation history`);
+    console.log(`  POST /chat                         - Send a message`);
+    console.log(`  GET  /health                       - Health check`);
+    console.log(`  GET  /conversations                - List conversations`);
+    console.log(`  GET  /conversations/:id/messages    - Conversation history`);
+    console.log(`  GET  /auth/keys                    - List stored API keys`);
+    console.log(`  POST /auth/keys                    - Store an API key`);
+    console.log(`  DELETE /auth/keys/:provider         - Remove an API key`);
+    console.log(`  GET  /models                       - List available models`);
+    console.log(`  GET  /config/model                 - Get current model`);
+    console.log(`  POST /config/model                 - Set current model`);
 
     return this.server;
   }

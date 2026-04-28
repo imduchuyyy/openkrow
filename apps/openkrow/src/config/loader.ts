@@ -26,6 +26,8 @@ export interface OpenKrowConfig {
   maxTurns: number;
   /** Custom system prompt override */
   systemPrompt?: string;
+  /** Workspace directory path (optional — enables workspace features) */
+  workspacePath?: string;
 }
 
 const DEFAULT_CONFIG: OpenKrowConfig = {
@@ -76,6 +78,9 @@ export async function loadConfig(
   }
   if (process.env.OPENKROW_API_KEY) {
     envConfig.apiKey = process.env.OPENKROW_API_KEY;
+  }
+  if (process.env.OPENKROW_WORKSPACE) {
+    envConfig.workspacePath = process.env.OPENKROW_WORKSPACE;
   }
 
   return {
