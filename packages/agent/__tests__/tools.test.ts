@@ -798,3 +798,62 @@ describe("ToolManager", () => {
     assert.ok(r.error?.includes("Access denied"));
   });
 });
+
+// ===========================================================================
+// ShowWidget Tool
+// ===========================================================================
+
+describe("ShowWidgetTool", () => {
+  let tool: ReturnType<typeof import("../tools/show-widget.js").createShowWidgetTool>;
+
+  before(async () => {
+    const { createShowWidgetTool } = await import("../tools/show-widget.js");
+    tool = createShowWidgetTool();
+  });
+
+  it("renders valid SVG with widget wrapper", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="10"/></svg>';
+    const r = await tool.execute({ svg });
+    assert.strictEqual(r.success, true);
+    assert.ok(r.output.includes('<widget type="svg">'));
+    assert.ok(r.output.includes(svg));
+    assert.ok(r.output.includes("</widget>"));
+  });
+
+  it("includes title when provided", async () => {
+    const svg = '<svg><rect width="10" height="10"/></svg>';
+    const r = await tool.execute({ svg, title: "My Chart" });
+    assert.strictEqual(r.success, true);
+    assert.ok(r.output.includes('title="My Chart"'));
+  });
+
+  it("fails when svg is empty", async () => {
+    const r = await tool.execute({ svg: "" });
+    assert.strictEqual(r.success, false);
+  });
+
+  it("fails when svg has no <svg element", async () => {
+    const r = await tool.execute({ svg: "<div>not svg</div>" });
+    assert.strictEqual(r.success, false);
+    assert.ok(r.error?.includes("must contain"));
+  });
+
+  it("rejects SVG with script tags", async () => {
+    const r = await tool.execute({ svg: '<svg><script>alert(1)</script></svg>' });
+    assert.strictEqual(r.success, false);
+    assert.ok(r.error?.includes("scripts"));
+  });
+
+  it("rejects SVG with event handlers", async () => {
+    const r = await tool.execute({ svg: '<svg onclick="alert(1)"><rect/></svg>' });
+    assert.strictEqual(r.success, false);
+    assert.ok(r.error?.includes("event handlers"));
+  });
+
+  it("rejects SVG exceeding 50KB", async () => {
+    const svg = "<svg>" + "x".repeat(51 * 1024) + "</svg>";
+    const r = await tool.execute({ svg });
+    assert.strictEqual(r.success, false);
+    assert.ok(r.error?.includes("too large"));
+  });
+});
