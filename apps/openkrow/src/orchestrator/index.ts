@@ -112,7 +112,7 @@ export class Orchestrator {
     return this.workspaceDb;
   }
 
-  private getAgent(): Agent {
+  private getAgent(llmConfig?: LLMConfig): Agent {
     if (!this.agent) {
       const systemPrompt = this._config.systemPrompt ?? this._configManager.getSystemPrompt() ?? undefined;
 
@@ -120,6 +120,7 @@ export class Orchestrator {
         name: "openkrow",
         description: "OpenKrow AI assistant",
         customPrompt: systemPrompt,
+        llm: llmConfig,
         database: this.ensureWorkspaceDb(),
         ...(this.workspace ? { workspace: this.workspace } : {}),
       });
@@ -137,8 +138,8 @@ export class Orchestrator {
     overrides?: { provider?: string; model?: string },
   ): Promise<{ response: string; messageId: string }> {
     this.ensureWorkspaceDb();
-    const agent = this.getAgent();
     const llmConfig = this.resolveLLMConfig(overrides);
+    const agent = this.getAgent(llmConfig);
     const maxTurns = this._config.maxTurns ?? this._configManager.getMaxTurns();
 
     const controller = new AbortController();
@@ -166,8 +167,8 @@ export class Orchestrator {
     overrides?: { provider?: string; model?: string },
   ): AsyncGenerator<StreamEvent, { messageId: string }, unknown> {
     this.ensureWorkspaceDb();
-    const agent = this.getAgent();
     const llmConfig = this.resolveLLMConfig(overrides);
+    const agent = this.getAgent(llmConfig);
     const maxTurns = this._config.maxTurns ?? this._configManager.getMaxTurns();
 
     const controller = new AbortController();

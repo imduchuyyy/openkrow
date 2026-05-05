@@ -106,12 +106,7 @@ async function streamChat(message: string): Promise<void> {
         }
 
         case "error": {
-          const errMsg = typeof event.error === "string"
-            ? event.error
-            : event.error instanceof Error
-              ? event.error.message
-              : JSON.stringify(event.error) === "{}" ? "Unknown error" : JSON.stringify(event.error);
-          console.error(`\n\x1b[31m[error] ${errMsg}\x1b[0m`);
+          console.error(`\n\x1b[31m[error] ${event.error as string}\x1b[0m`);
           break;
         }
 

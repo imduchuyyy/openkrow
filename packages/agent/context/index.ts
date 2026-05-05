@@ -18,7 +18,7 @@
  * IMPORTANT: The original messages are NEVER mutated during assembly.
  */
 
-import type { TextContent, ThinkingContent, ToolCall } from "@mariozechner/pi-ai";
+import type { TextContent, ThinkingContent, ToolCall, KnownProvider } from "@mariozechner/pi-ai";
 import type { AssistantContentPart } from "../types/index.js";
 import type { WorkspaceDatabaseClient } from "@openkrow/database";
 import type { Message as DbMessage } from "@openkrow/database";
@@ -128,11 +128,12 @@ export class ContextManager {
     this.customPromptOverride = prompt;
   }
 
-  getSystemPrompt(): string {
+  getSystemPrompt(provider?: KnownProvider): string {
     if (this.customPromptOverride !== undefined) return this.customPromptOverride;
 
     // Refresh workspace context from disk before each assembly
     const opts = { ...this.promptOptions };
+    if (provider) opts.provider = provider;
     if (this.workspace?.isLoaded()) {
       this.workspace.refreshContext();
       const ctx = this.workspace.getContext();
@@ -200,7 +201,7 @@ export class ContextManager {
       this.promptOptions.hasTools = true;
     }
 
-    const systemPrompt = this.getSystemPrompt();
+    const systemPrompt = this.getSystemPrompt(options.provider);
     const systemTokens = systemPrompt ? estimateTokens(systemPrompt) : 0;
     const toolTokens = estimateToolDefinitionTokens(tools);
     const effectiveBudget = contextWindow - maxOutputTokens - reservedBuffer - systemTokens - toolTokens;
