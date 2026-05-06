@@ -3,6 +3,8 @@ node_modules/
 
 # Build outputs
 dist/
+out/
+release/
 
 # Environment
 .env
@@ -29,3 +31,9 @@ coverage/
 # Temp
 tmp/
 .cache/
+
+# Electron
+out/
+
+# Bun
+bun.lockb

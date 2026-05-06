@@ -1,33 +1,29 @@
 {
-  "name": "openkrow",
+  "name": "krow",
+  "private": true,
   "version": "0.1.0",
-  "description": "OpenKrow - Open-source AI assistant for office workers, students, and researchers",
+  "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
-  "bin": {
-    "krow": "./dist/index.js"
-  },
   "scripts": {
-    "build": "tsc && cp -r agent/context/prompt dist/agent/context/prompt && cp agent/tools/*.txt dist/agent/tools/",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test agent/__tests__ config/src/__tests__ skill/src/__tests__",
-    "start": "bun run dist/index.js"
+    "start": "bun run css && electrobun dev",
+    "dev": "concurrently \"bun run css:watch\" \"electrobun dev --watch\"",
+    "css": "bunx @tailwindcss/cli -i src/mainview/index.css -o src/mainview/styles.css",
+    "css:watch": "bunx @tailwindcss/cli -i src/mainview/index.css -o src/mainview/styles.css --watch",
+    "build": "bun run css && electrobun build",
+    "build:prod": "bun run css && electrobun build --env stable"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.70.5"
+    "@opencode-ai/sdk": "^1.14.39",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@types/node": "^22.12.0",
-    "bun-types": "^1.1.0",
-    "typescript": "^5.7.0"
-  },
-  "peerDependencies": {
-    "bun": ">=1.0.0"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "license": "MIT"
+    "@tailwindcss/cli": "^4.2.4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "electrobun": "^1.18.1",
+    "tailwindcss": "^4.2.4",
+    "typescript": "~5.6.2"
+  }
 }
