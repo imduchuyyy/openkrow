@@ -4,7 +4,8 @@ import { createOpencode, createOpencodeClient } from "@opencode-ai/sdk";
 import type { OpencodeClient } from "@opencode-ai/sdk";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { KrowRPCSchema, ChatMessage } from "../shared/types";
+import type { KrowRPCSchema, ModelInfo } from "../shared/types";
+import { krowAgent } from "./agent";
 
 // Ensure opencode CLI is on PATH and env is correct
 const home = homedir();
@@ -13,6 +14,81 @@ process.env.HOME = home;
 
 let client: InstanceType<typeof OpencodeClient> | null = null;
 const serverAbort = new AbortController();
+
+// Track streaming text per part
+const partTexts = new Map<string, string>();
+
+async function startEventStream() {
+  if (!client) return;
+  try {
+    const events = await client.event.subscribe();
+    for await (const event of (events as any).stream) {
+      const evt = event as any;
+      switch (evt.type) {
+        case "message.part.updated": {
+          const { part, delta } = evt.properties;
+          if (part.type === "text" && delta) {
+            const existing = partTexts.get(part.id) ?? "";
+            const updated = existing + delta;
+            partTexts.set(part.id, updated);
+            rpc.send.streamDelta({
+              sessionId: part.sessionID,
+              messageId: part.messageID,
+              partId: part.id,
+              delta,
+              text: updated,
+            });
+          }
+          if (part.type === "text" && !delta) {
+            // Part complete (full text update without delta)
+            partTexts.set(part.id, part.text ?? "");
+            rpc.send.streamPartComplete({
+              sessionId: part.sessionID,
+              messageId: part.messageID,
+              partId: part.id,
+              type: part.type,
+              text: part.text ?? "",
+            });
+          }
+          break;
+        }
+        case "session.status": {
+          const { sessionID, status } = evt.properties;
+          rpc.send.sessionStatus({
+            sessionId: sessionID,
+            status: status.type,
+          });
+          if (status.type === "idle") {
+            // Clean up part tracking for this session
+            // Message is complete
+          }
+          break;
+        }
+        case "session.error": {
+          const { sessionID, error } = evt.properties;
+          rpc.send.sessionError({
+            sessionId: sessionID,
+            error: typeof error === "string" ? error : error?.message ?? "Unknown error",
+          });
+          break;
+        }
+        case "message.updated": {
+          const { info } = evt.properties;
+          if (info.role === "assistant" && info.time?.completed) {
+            rpc.send.messageComplete({
+              sessionId: info.sessionID,
+              messageId: info.id,
+            });
+            // Clear part texts for completed message parts
+          }
+          break;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("Event stream error:", err?.message);
+  }
+}
 
 ApplicationMenu.setApplicationMenu([
   {
@@ -56,17 +132,16 @@ const rpc = BrowserView.defineRPC<KrowRPCSchema>({
             timeout: 15000,
             signal: serverAbort.signal,
             config: {
+              agent: {
+                krow: krowAgent
+              },
               plugin: [],
             },
           });
           client = result.client;
 
-          const agents = await client.app.agents();
-          if (!agents.data) {
-            return { success: false, error: "Failed to fetch agents" };
-          }
-          console.log("Krow server ready at:", path);
-          console.log("Agents:", agents.data.map((a) => a.name).join(", "));
+          // Start listening to SSE events and forward to webview
+          startEventStream();
 
           rpc.send.workspaceReady({ path });
           return { success: true };
@@ -89,30 +164,46 @@ const rpc = BrowserView.defineRPC<KrowRPCSchema>({
         }
       },
 
-      sendMessage: async ({ sessionId, text }) => {
+      sendMessage: async ({ sessionId, text, model }) => {
         if (!client) return { error: "No workspace active" };
         try {
-          const res = await client.session.prompt({
+          await client.session.promptAsync({
             path: { id: sessionId },
             body: {
+              agent: "krow",
               parts: [{ type: "text", text }],
+              ...(model ? { model } : {}),
             },
           });
-          if (!res.data) return { error: "No response from server" };
+          return { success: true };
+        } catch (err: any) {
+          return { error: err?.message ?? String(err) };
+        }
+      },
 
-          // Extract text from response parts
-          const responseText = res.data.parts
-            .filter((p: any) => p.type === "text")
-            .map((p: any) => p.text)
-            .join("\n");
+      getProviders: async () => {
+        if (!client) return { error: "No workspace active" };
+        try {
+          const res = await client.config.providers();
+          if (!res.data) return { error: "Failed to fetch providers" };
 
-          const message: ChatMessage = {
-            id: res.data.info.id,
-            role: "assistant",
-            text: responseText,
-            createdAt: res.data.info.time.created,
-          };
-          return { message };
+          const models: ModelInfo[] = [];
+          for (const provider of res.data.providers) {
+            for (const [modelId, model] of Object.entries(provider.models)) {
+              models.push({
+                id: modelId,
+                name: model.name,
+                providerID: provider.id,
+                providerName: provider.name,
+              });
+            }
+          }
+
+          // Get current default model (format: "provider/model")
+          const defaults = res.data.default;
+          const currentModel = defaults?.["default"] ?? null;
+
+          return { models, currentModel };
         } catch (err: any) {
           return { error: err?.message ?? String(err) };
         }

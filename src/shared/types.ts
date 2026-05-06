@@ -10,6 +10,13 @@ export type ChatMessage = {
   isLoading?: boolean;
 };
 
+export type ModelInfo = {
+  id: string;
+  name: string;
+  providerID: string;
+  providerName: string;
+};
+
 export type KrowRPCSchema = {
   bun: {
     requests: {
@@ -26,8 +33,12 @@ export type KrowRPCSchema = {
         response: { sessionId: string } | { error: string };
       };
       sendMessage: {
-        params: { sessionId: string; text: string };
-        response: { message: ChatMessage } | { error: string };
+        params: { sessionId: string; text: string; model?: { providerID: string; modelID: string } };
+        response: { success: boolean } | { error: string };
+      };
+      getProviders: {
+        params: {};
+        response: { models: ModelInfo[]; currentModel: string | null } | { error: string };
       };
     };
     messages: {};
@@ -37,6 +48,11 @@ export type KrowRPCSchema = {
     messages: {
       workspaceReady: { path: string };
       workspaceError: { error: string };
+      streamDelta: { sessionId: string; messageId: string; partId: string; delta: string; text: string };
+      streamPartComplete: { sessionId: string; messageId: string; partId: string; type: string; text: string };
+      messageComplete: { sessionId: string; messageId: string };
+      sessionStatus: { sessionId: string; status: "idle" | "busy" | "retry" };
+      sessionError: { sessionId: string; error: string };
     };
   };
 };
