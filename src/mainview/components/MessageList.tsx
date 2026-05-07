@@ -1,4 +1,6 @@
 import { useRef, useEffect } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage, MessagePart, ToolPart, ReasoningPart } from "../../shared/types";
 
 type Props = {
@@ -41,13 +43,40 @@ function ReasoningView({ part }: { part: ReasoningPart }) {
   );
 }
 
+function MarkdownContent({ text }: { text: string }) {
+  return (
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        pre: ({ children }) => <pre className="bg-neutral-900 rounded-md p-3 overflow-x-auto my-2 text-xs">{children}</pre>,
+        code: ({ className, children, ...props }) => {
+          const isBlock = className?.startsWith("language-");
+          if (isBlock) {
+            return <code className={`${className} text-xs`} {...props}>{children}</code>;
+          }
+          return <code className="bg-neutral-700 px-1 py-0.5 rounded text-xs" {...props}>{children}</code>;
+        },
+        a: ({ children, href }) => <a href={href} className="text-blue-400 underline" target="_blank" rel="noreferrer">{children}</a>,
+        ul: ({ children }) => <ul className="list-disc pl-4 my-1">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-4 my-1">{children}</ol>,
+        p: ({ children }) => <p className="my-1">{children}</p>,
+        table: ({ children }) => <table className="border-collapse my-2 text-xs w-full">{children}</table>,
+        th: ({ children }) => <th className="border border-neutral-600 px-2 py-1 bg-neutral-700">{children}</th>,
+        td: ({ children }) => <td className="border border-neutral-600 px-2 py-1">{children}</td>,
+      }}
+    >
+      {text}
+    </Markdown>
+  );
+}
+
 function PartsView({ parts }: { parts: MessagePart[] }) {
   return (
     <div className="space-y-1">
       {parts.map((part) => {
         switch (part.type) {
           case "text":
-            return <div key={part.id} className="whitespace-pre-wrap">{part.text}</div>;
+            return <div key={part.id}><MarkdownContent text={part.text} /></div>;
           case "reasoning":
             return <ReasoningView key={part.id} part={part} />;
           case "tool":
@@ -94,6 +123,8 @@ export default function MessageList({ messages, sending }: Props) {
           >
             {msg.role === "assistant" && msg.parts && msg.parts.length > 0 ? (
               <PartsView parts={msg.parts} />
+            ) : msg.role === "assistant" ? (
+              <MarkdownContent text={msg.text} />
             ) : (
               <span className="whitespace-pre-wrap">{msg.text}</span>
             )}
