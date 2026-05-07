@@ -1,4 +1,4 @@
 ## TODOs
-- Last use workspace
 - Last use models
-- skill
+- Open new workspace but load last session
+- Preview for many types of files
