@@ -1,10 +1,73 @@
 import { useRef, useEffect } from "react";
-import type { ChatMessage } from "../../shared/types";
+import type { ChatMessage, MessagePart, ToolPart, ReasoningPart } from "../../shared/types";
 
 type Props = {
   messages: ChatMessage[];
   sending: boolean;
 };
+
+function ToolPartView({ part }: { part: ToolPart }) {
+  const { tool, state } = part;
+  const statusIcon = state.status === "completed" ? "✓" : state.status === "running" ? "⟳" : state.status === "error" ? "✗" : "…";
+  const title = ("title" in state && state.title) ? state.title : tool;
+
+  return (
+    <div className="my-1 px-3 py-1.5 bg-neutral-700/50 rounded-lg text-xs font-mono">
+      <div className="flex items-center gap-2">
+        <span className={state.status === "error" ? "text-red-400" : state.status === "completed" ? "text-green-400" : "text-yellow-400"}>
+          {statusIcon}
+        </span>
+        <span className="text-neutral-300">{title}</span>
+      </div>
+      {state.status === "completed" && state.output && (
+        <details className="mt-1">
+          <summary className="text-neutral-500 cursor-pointer">Output</summary>
+          <pre className="mt-1 text-neutral-400 whitespace-pre-wrap text-[11px] max-h-40 overflow-y-auto">{state.output.slice(0, 2000)}</pre>
+        </details>
+      )}
+      {state.status === "error" && (
+        <p className="mt-1 text-red-400 text-[11px]">{state.error}</p>
+      )}
+    </div>
+  );
+}
+
+function ReasoningView({ part }: { part: ReasoningPart }) {
+  return (
+    <details className="my-1">
+      <summary className="text-neutral-500 text-xs cursor-pointer">Thinking...</summary>
+      <div className="px-3 py-1 text-xs text-neutral-400 italic whitespace-pre-wrap">{part.text}</div>
+    </details>
+  );
+}
+
+function PartsView({ parts }: { parts: MessagePart[] }) {
+  return (
+    <div className="space-y-1">
+      {parts.map((part) => {
+        switch (part.type) {
+          case "text":
+            return <div key={part.id} className="whitespace-pre-wrap">{part.text}</div>;
+          case "reasoning":
+            return <ReasoningView key={part.id} part={part} />;
+          case "tool":
+            return <ToolPartView key={part.id} part={part} />;
+          case "step-start":
+            return <div key={part.id} className="border-t border-neutral-700 my-2" />;
+          case "step-finish":
+            return (
+              <div key={part.id} className="text-[10px] text-neutral-600">
+                tokens: {part.tokens.input}in / {part.tokens.output}out
+                {part.tokens.reasoning > 0 && ` / ${part.tokens.reasoning}thinking`}
+              </div>
+            );
+          default:
+            return null;
+        }
+      })}
+    </div>
+  );
+}
 
 export default function MessageList({ messages, sending }: Props) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -23,17 +86,21 @@ export default function MessageList({ messages, sending }: Props) {
       {messages.map((msg) => (
         <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
           <div
-            className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+            className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm ${
               msg.role === "user"
-                ? "bg-blue-600 text-white"
+                ? "bg-blue-600 text-white whitespace-pre-wrap"
                 : "bg-neutral-800 text-neutral-200"
             }`}
           >
-            {msg.text}
+            {msg.role === "assistant" && msg.parts && msg.parts.length > 0 ? (
+              <PartsView parts={msg.parts} />
+            ) : (
+              <span className="whitespace-pre-wrap">{msg.text}</span>
+            )}
           </div>
         </div>
       ))}
-      {sending && (
+      {sending && messages[messages.length - 1]?.role !== "assistant" && (
         <div className="flex justify-start">
           <div className="bg-neutral-800 text-neutral-400 rounded-xl px-4 py-2.5 text-sm">
             Thinking...

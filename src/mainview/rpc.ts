@@ -26,11 +26,8 @@ export const rpc = Electroview.defineRPC<KrowRPCSchema>({
       workspaceError: (payload) => {
         emit("workspaceError", payload);
       },
-      streamDelta: (payload) => {
-        emit("streamDelta", payload);
-      },
-      streamPartComplete: (payload) => {
-        emit("streamPartComplete", payload);
+      partUpdated: (payload) => {
+        emit("partUpdated", payload);
       },
       messageComplete: (payload) => {
         emit("messageComplete", payload);

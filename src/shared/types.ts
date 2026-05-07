@@ -2,12 +2,62 @@
  * Krow RPC Schema — defines typed communication between bun process and webview.
  */
 
+// Part types matching opencode SDK event definitions
+export type TextPart = {
+  id: string;
+  type: "text";
+  sessionID: string;
+  messageID: string;
+  text: string;
+};
+
+export type ReasoningPart = {
+  id: string;
+  type: "reasoning";
+  sessionID: string;
+  messageID: string;
+  text: string;
+};
+
+export type ToolPartState =
+  | { status: "pending"; input: Record<string, unknown> }
+  | { status: "running"; input: Record<string, unknown>; title?: string; time: { start: number } }
+  | { status: "completed"; input: Record<string, unknown>; output: string; title: string; time: { start: number; end: number } }
+  | { status: "error"; input: Record<string, unknown>; error: string; time: { start: number; end: number } };
+
+export type ToolPart = {
+  id: string;
+  type: "tool";
+  sessionID: string;
+  messageID: string;
+  tool: string;
+  state: ToolPartState;
+};
+
+export type StepStartPart = {
+  id: string;
+  type: "step-start";
+  sessionID: string;
+  messageID: string;
+};
+
+export type StepFinishPart = {
+  id: string;
+  type: "step-finish";
+  sessionID: string;
+  messageID: string;
+  tokens: { input: number; output: number; reasoning: number };
+};
+
+export type MessagePart = TextPart | ReasoningPart | ToolPart | StepStartPart | StepFinishPart;
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
   createdAt: number;
   isLoading?: boolean;
+  parts?: MessagePart[];
 };
 
 export type ModelInfo = {
@@ -48,8 +98,7 @@ export type KrowRPCSchema = {
     messages: {
       workspaceReady: { path: string };
       workspaceError: { error: string };
-      streamDelta: { sessionId: string; messageId: string; partId: string; delta: string; text: string };
-      streamPartComplete: { sessionId: string; messageId: string; partId: string; type: string; text: string };
+      partUpdated: { sessionId: string; messageId: string; part: MessagePart; delta?: string };
       messageComplete: { sessionId: string; messageId: string };
       sessionStatus: { sessionId: string; status: "idle" | "busy" | "retry" };
       sessionError: { sessionId: string; error: string };

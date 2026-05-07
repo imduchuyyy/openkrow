@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { rpc, onStreamEvent } from "./rpc";
-import type { ChatMessage } from "../shared/types";
+import type { ChatMessage, MessagePart } from "../shared/types";
 import FolderPicker from "./components/FolderPicker";
 import ChatHeader from "./components/ChatHeader";
 import MessageList from "./components/MessageList";
@@ -16,47 +16,60 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [selectedModel, setSelectedModel] = useState<{ providerID: string; modelID: string } | null>(null);
-  const streamingTextRef = useRef<Map<string, string>>(new Map());
 
   // Listen to streaming events
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
-    unsubs.push(onStreamEvent("streamDelta", (payload) => {
-      const { messageId, text } = payload;
-      streamingTextRef.current.set(messageId, text);
+    unsubs.push(onStreamEvent("partUpdated", (payload: { sessionId: string; messageId: string; part: MessagePart; delta?: string }) => {
+      const { messageId, part } = payload;
 
       setMessages((prev) => {
         const existing = prev.find((m) => m.id === messageId);
         if (existing) {
-          return prev.map((m) => m.id === messageId ? { ...m, text } : m);
+          // Update existing message parts
+          const parts = [...(existing.parts ?? [])];
+          const partIdx = parts.findIndex((p) => p.id === part.id);
+          if (partIdx >= 0) {
+            parts[partIdx] = part;
+          } else {
+            parts.push(part);
+          }
+          // Derive text from text parts
+          const text = parts
+            .filter((p) => p.type === "text")
+            .map((p) => (p as any).text)
+            .join("");
+          return prev.map((m) => m.id === messageId ? { ...m, parts, text } : m);
         }
+        // Create new assistant message
+        const text = part.type === "text" ? (part as any).text : "";
         return [...prev, {
           id: messageId,
           role: "assistant" as const,
           text,
           createdAt: Date.now(),
           isLoading: true,
+          parts: [part],
         }];
       });
     }));
 
-    unsubs.push(onStreamEvent("messageComplete", (payload) => {
+    unsubs.push(onStreamEvent("messageComplete", (payload: { messageId: string }) => {
       const { messageId } = payload;
       setSending(false);
       setMessages((prev) =>
         prev.map((m) => m.id === messageId ? { ...m, isLoading: false } : m)
       );
-      streamingTextRef.current.delete(messageId);
     }));
 
-    unsubs.push(onStreamEvent("sessionStatus", (payload) => {
+    unsubs.push(onStreamEvent("sessionStatus", (payload: { status: string }) => {
       if (payload.status === "idle") {
         setSending(false);
       }
     }));
 
-    unsubs.push(onStreamEvent("sessionError", (payload) => {
+    unsubs.push(onStreamEvent("sessionError", (payload: { error: string }) => {
       setSending(false);
       setMessages((prev) => [
         ...prev,
@@ -114,7 +127,6 @@ export default function App() {
         { id: crypto.randomUUID(), role: "assistant", text: `Error: ${res.error}`, createdAt: Date.now() },
       ]);
     }
-    // If success, streaming events will build the assistant message
   };
 
   if (state !== "ready") {
