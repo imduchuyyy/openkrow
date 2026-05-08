@@ -76,13 +76,9 @@ export type FileEntry = {
 export type KrowRPCSchema = {
   bun: {
     requests: {
-      selectFolder: {
+      initWorkspace: {
         params: {};
-        response: { path: string | null };
-      };
-      startWorkspace: {
-        params: { path: string };
-        response: { success: boolean; error?: string };
+        response: { path: string } | { error: string };
       };
       createSession: {
         params: {};

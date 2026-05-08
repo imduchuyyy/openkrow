@@ -1,17 +1,16 @@
 import { useState, useEffect } from "react";
 import { rpc, onStreamEvent } from "./rpc";
 import type { ChatMessage, MessagePart } from "../shared/types";
-import FolderPicker from "./components/FolderPicker";
 import FileExplorer from "./components/FileExplorer";
 import FileViewer from "./components/FileViewer";
 import MessageList from "./components/MessageList";
 import ChatInput from "./components/ChatInput";
 import ModelSelector from "./components/ModelSelector";
 
-type AppState = "idle" | "loading" | "ready";
+type AppState = "loading" | "ready" | "error";
 
 export default function App() {
-  const [state, setState] = useState<AppState>("idle");
+  const [state, setState] = useState<AppState>("loading");
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -77,14 +76,17 @@ export default function App() {
     return () => unsubs.forEach((fn) => fn());
   }, []);
 
-  const handleSelectFolder = async () => {
-    setError(null);
-    const result = await rpc.request.selectFolder({});
-    if (result.path) {
-      setState("loading");
-      setWorkspacePath(result.path);
-      const start = await rpc.request.startWorkspace({ path: result.path });
-      if (start.success) {
+  // Auto-initialize workspace on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const init = await rpc.request.initWorkspace({});
+        if ("error" in init) {
+          setState("error");
+          setError(init.error);
+          return;
+        }
+        setWorkspacePath(init.path);
         const session = await rpc.request.createSession({});
         if ("sessionId" in session) {
           setSessionId(session.sessionId);
@@ -93,15 +95,15 @@ export default function App() {
           }
           setState("ready");
         } else {
-          setState("idle");
+          setState("error");
           setError(session.error);
         }
-      } else {
-        setState("idle");
-        setError(start.error ?? "Failed to start workspace");
+      } catch (err: any) {
+        setState("error");
+        setError(err?.message ?? String(err));
       }
-    }
-  };
+    })();
+  }, []);
 
   const handleSend = async (text: string) => {
     if (!sessionId || sending) return;
@@ -128,14 +130,15 @@ export default function App() {
       ]);
     }
   };
+  console.log(error)
 
   if (state !== "ready") {
     return (
-      <FolderPicker
-        onSelectFolder={handleSelectFolder}
-        loading={state === "loading"}
-        error={error}
-      />
+      <div className="flex flex-col items-center justify-center h-screen bg-neutral-900 text-neutral-200 font-sans gap-6">
+        <h1 className="text-4xl font-light tracking-tight">Krow</h1>
+        {state === "loading" && <p className="text-neutral-400 text-sm">Starting...</p>}
+        {state === "error" && <p className="text-red-400 text-xs max-w-xs text-center">{error}</p>}
+      </div>
     );
   }
 

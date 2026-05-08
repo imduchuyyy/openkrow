@@ -39,7 +39,7 @@ export class SkillInstaller {
       }
 
       const buffer = Buffer.from(await res.arrayBuffer());
-      await writeFile(tarPath, buffer);
+      await writeFile(tarPath, buffer as any);
 
       const extractPatterns = toInstall
         .map((name) => `"skills-main/skills/${name}"`)

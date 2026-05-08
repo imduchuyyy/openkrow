@@ -12,7 +12,8 @@ process.env.HOME = home;
 
 // Core services
 const workspace = new WorkspaceManager();
-const rpc = createRpcHandler(workspace);
+const desktopPath = join(home, "Desktop");
+const rpc = createRpcHandler(workspace, desktopPath);
 
 // Application menu
 ApplicationMenu.setApplicationMenu([

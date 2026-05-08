@@ -25,7 +25,7 @@ export class WorkspaceManager {
   /**
    * Start a workspace: boot opencode server, install skills, begin event stream.
    */
-  async start(path: string, send: RpcSend): Promise<void> {
+  async start(path: string): Promise<void> {
     // Tear down previous workspace if any
     if (this.client) {
       this.stop();
@@ -41,7 +41,7 @@ export class WorkspaceManager {
     });
 
     const result = await createOpencode({
-      port: 4200,
+      port: 0,
       timeout: 15000,
       signal: this.abortController.signal,
       config: {
@@ -51,6 +51,13 @@ export class WorkspaceManager {
     });
 
     this.client = result.client;
+  }
+
+  /**
+   * Start the event stream (must be called after start and after RPC is available).
+   */
+  startEventStream(send: RpcSend): void {
+    if (!this.client) throw new Error("No workspace active");
     this.eventStream = new EventStream(this.client, send);
     this.eventStream.start();
   }

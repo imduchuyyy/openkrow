@@ -1,41 +1,32 @@
-import { BrowserView, Utils } from "electrobun/bun";
-import { homedir } from "node:os";
+import { BrowserView } from "electrobun/bun";
 import type { KrowRPCSchema } from "../shared/types";
 import { WorkspaceManager } from "./workspace";
 import { FileService } from "./files";
 
-const home = homedir();
-
 /**
  * Creates the RPC handler that bridges the webview and bun process.
  */
-export function createRpcHandler(workspace: WorkspaceManager) {
+export function createRpcHandler(workspace: WorkspaceManager, desktopPath: string) {
+  let initPromise: Promise<{ path: string } | { error: string }> | null = null;
+
   const rpc = BrowserView.defineRPC<KrowRPCSchema>({
     maxRequestTime: 120000,
     handlers: {
       requests: {
-        selectFolder: async () => {
-          const paths = await Utils.openFileDialog({
-            startingFolder: home,
-            canChooseFiles: false,
-            canChooseDirectory: true,
-            allowsMultipleSelection: false,
-          });
-          const selected = paths[0] && paths[0] !== "" ? paths[0] : null;
-          return { path: selected };
-        },
-
-        startWorkspace: async ({ path }) => {
-          try {
-            await workspace.start(path, rpc.send);
-            rpc.send.workspaceReady({ path });
-            return { success: true };
-          } catch (err: any) {
-            console.error("Error starting workspace:", err);
-            const error = err?.message ?? String(err);
-            rpc.send.workspaceError({ error });
-            return { success: false, error };
+        initWorkspace: async () => {
+          if (!initPromise) {
+            initPromise = (async () => {
+              try {
+                await workspace.start(desktopPath);
+                workspace.startEventStream(rpc.send);
+                return { path: desktopPath };
+              } catch (err: any) {
+                initPromise = null; // allow retry on failure
+                return { error: err?.message ?? String(err) };
+              }
+            })();
           }
+          return initPromise;
         },
 
         createSession: async () => {
