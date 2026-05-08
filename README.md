@@ -1,5 +1,5 @@
 ## TODOs
-- Last use models
-- Open new workspace but load last session
-- Preview for many types of files
-- Use opencode/sdk/v2
+- setting page
+- connect page
+- Shortcut cmd
+- menu bar
