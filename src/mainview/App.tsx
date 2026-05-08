@@ -1,23 +1,20 @@
 import { useState, useEffect } from "react";
 import { rpc, onStreamEvent } from "./rpc";
-import type { ChatMessage, MessagePart } from "../shared/types";
-import FileExplorer from "./components/FileExplorer";
-import FileViewer from "./components/FileViewer";
+import type { ChatMessage, MessagePart, SessionInfo } from "../shared/types";
 import MessageList from "./components/MessageList";
 import ChatInput from "./components/ChatInput";
-import ModelSelector from "./components/ModelSelector";
+import SessionHistory from "./components/SessionHistory";
 
 type AppState = "loading" | "ready" | "error";
 
 export default function App() {
   const [state, setState] = useState<AppState>("loading");
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<{ providerID: string; modelID: string } | null>(null);
-  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<{ providerID: string; modelID: string } | null>({ providerID: "opencode", modelID: "big-pickle" });
+  const [showHistory, setShowHistory] = useState(false);
 
   // Listen to streaming events
   useEffect(() => {
@@ -86,7 +83,6 @@ export default function App() {
           setError(init.error);
           return;
         }
-        setWorkspacePath(init.path);
         const session = await rpc.request.createSession({});
         if ("sessionId" in session) {
           setSessionId(session.sessionId);
@@ -130,7 +126,23 @@ export default function App() {
       ]);
     }
   };
-  console.log(error)
+
+  const handleNewSession = async () => {
+    const res = await rpc.request.newSession({});
+    if ("sessionId" in res) {
+      setSessionId(res.sessionId);
+      setMessages([]);
+    }
+  };
+
+  const handleSelectSession = async (session: SessionInfo) => {
+    setShowHistory(false);
+    const res = await rpc.request.loadSession({ sessionId: session.id });
+    if ("sessionId" in res) {
+      setSessionId(res.sessionId);
+      setMessages(res.history);
+    }
+  };
 
   if (state !== "ready") {
     return (
@@ -143,34 +155,46 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-neutral-900 text-neutral-200 font-sans">
-      {/* Left Sidebar - File Explorer */}
-      <div className="w-60 shrink-0 h-full">
-        <FileExplorer workspacePath={workspacePath!} onFileSelect={setOpenFile} />
-      </div>
-
-      {/* Center - Chat Panel */}
-      <div className="flex-1 flex flex-col min-w-0 border-l border-r border-neutral-800">
-        {/* Title bar */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 shrink-0" style={{ paddingTop: "1.75rem" }}>
-          <div className="flex items-center gap-2 min-w-0">
-            <h1 className="text-sm font-medium">Krow</h1>
-            <span className="text-[10px] text-neutral-600 font-mono truncate">{workspacePath}</span>
-          </div>
-          <ModelSelector onModelChange={setSelectedModel} />
+    <div className="flex flex-col h-screen bg-neutral-900 text-neutral-200 font-sans">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-800 shrink-0" style={{ paddingTop: "1.75rem" }}>
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-medium">Krow</h1>
         </div>
-
-        {/* Messages */}
-        <MessageList messages={messages} sending={sending} />
-
-        {/* Input */}
-        <ChatInput onSend={handleSend} disabled={sending} />
+        <div className="flex items-center gap-1">
+          {/* History button */}
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="p-1.5 rounded-md hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-neutral-200"
+            title="Chat history"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          {/* New session button */}
+          <button
+            onClick={handleNewSession}
+            className="p-1.5 rounded-md hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-neutral-200"
+            title="New chat"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Right Panel - File Viewer */}
-      <div className="w-[400px] shrink-0 h-full">
-        <FileViewer filePath={openFile} onClose={() => setOpenFile(null)} />
-      </div>
+      {/* History panel */}
+      {showHistory && (
+        <SessionHistory onSelect={handleSelectSession} onClose={() => setShowHistory(false)} currentSessionId={sessionId} />
+      )}
+
+      {/* Messages */}
+      <MessageList messages={messages} sending={sending} />
+
+      {/* Input with model selector */}
+      <ChatInput onSend={handleSend} disabled={sending} onModelChange={setSelectedModel} />
     </div>
   );
 }

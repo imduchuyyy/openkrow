@@ -94,6 +94,37 @@ export class WorkspaceManager {
   }
 
   /**
+   * Create a brand new session.
+   */
+  async createNewSession(): Promise<string> {
+    if (!this.client) throw new Error("No workspace active");
+    const res = await this.client.session.create({ body: {} });
+    if (!res.data) throw new Error("Failed to create session");
+    return res.data.id;
+  }
+
+  /**
+   * List all sessions for the current workspace directory.
+   */
+  async listSessions(): Promise<{ id: string; title: string; updatedAt: number }[]> {
+    if (!this.client) throw new Error("No workspace active");
+
+    const listRes = await this.client.session.list({
+      query: { directory: this.directory! },
+    });
+
+    if (!listRes.data) return [];
+
+    return [...listRes.data]
+      .sort((a, b) => b.time.updated - a.time.updated)
+      .map((s) => ({
+        id: s.id,
+        title: s.title || "Untitled",
+        updatedAt: s.time.updated,
+      }));
+  }
+
+  /**
    * Fetch full message history for a session.
    */
   async getSessionHistory(sessionId: string): Promise<ChatMessage[]> {
@@ -128,7 +159,7 @@ export class WorkspaceManager {
   /**
    * Send a message to a session.
    */
-  async sendMessage(sessionId: string, text: string): Promise<void> {
+  async sendMessage(sessionId: string, text: string, model?: { providerID: string; modelID: string }): Promise<void> {
     if (!this.client) throw new Error("No workspace active");
 
     await this.client.session.promptAsync({
@@ -136,7 +167,7 @@ export class WorkspaceManager {
       body: {
         agent: "krow",
         parts: [{ type: "text", text }],
-        model: { providerID: "opencode", modelID: "big-pickle" },
+        model: model ?? { providerID: "opencode", modelID: "big-pickle" },
       },
     });
   }
@@ -151,6 +182,7 @@ export class WorkspaceManager {
     if (!res.data) throw new Error("Failed to fetch providers");
 
     const models: { id: string; name: string; providerID: string; providerName: string }[] = [];
+    console.log(res.data)
     for (const provider of res.data.providers) {
       for (const [modelId, model] of Object.entries(provider.models)) {
         models.push({ id: modelId, name: model.name, providerID: provider.id, providerName: provider.name });

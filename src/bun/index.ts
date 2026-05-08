@@ -40,7 +40,7 @@ const win = new BrowserWindow({
   url: "views://mainview/index.html",
   rpc,
   frame: {
-    width: 1400,
+    width: 500,
     height: 800,
     x: 0,
     y: 0,

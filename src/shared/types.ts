@@ -67,10 +67,10 @@ export type ModelInfo = {
   providerName: string;
 };
 
-export type FileEntry = {
-  name: string;
-  path: string;
-  type: "file" | "directory";
+export type SessionInfo = {
+  id: string;
+  title: string;
+  updatedAt: number;
 };
 
 export type KrowRPCSchema = {
@@ -84,6 +84,18 @@ export type KrowRPCSchema = {
         params: {};
         response: { sessionId: string; history: ChatMessage[] } | { error: string };
       };
+      newSession: {
+        params: {};
+        response: { sessionId: string } | { error: string };
+      };
+      listSessions: {
+        params: {};
+        response: { sessions: SessionInfo[] } | { error: string };
+      };
+      loadSession: {
+        params: { sessionId: string };
+        response: { sessionId: string; history: ChatMessage[] } | { error: string };
+      };
       sendMessage: {
         params: { sessionId: string; text: string; model?: { providerID: string; modelID: string } };
         response: { success: boolean } | { error: string };
@@ -91,14 +103,6 @@ export type KrowRPCSchema = {
       getProviders: {
         params: {};
         response: { models: ModelInfo[]; currentModel: string | null } | { error: string };
-      };
-      listFiles: {
-        params: { path: string };
-        response: { files: FileEntry[] } | { error: string };
-      };
-      readFile: {
-        params: { path: string };
-        response: { content: string; path: string } | { error: string };
       };
     };
     messages: {};
