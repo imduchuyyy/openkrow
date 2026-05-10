@@ -11,20 +11,20 @@ export default {
   },
   build: {
     bun: {
-      entrypoint: "src/bun/index.ts",
+      entrypoint: "bun/index.ts",
     },
     views: {
       mainview: {
-        entrypoint: "src/mainview/index.tsx",
+        entrypoint: "mainview/index.tsx",
       },
       settingsview: {
-        entrypoint: "src/settingsview/index.tsx",
+        entrypoint: "settingsview/index.tsx",
       },
     },
     copy: {
-      "src/mainview/index.html": "views/mainview/index.html",
-      "src/mainview/styles.css": "views/mainview/styles.css",
-      "src/settingsview/index.html": "views/settingsview/index.html",
+      "mainview/index.html": "views/mainview/index.html",
+      "mainview/styles.css": "views/mainview/styles.css",
+      "settingsview/index.html": "views/settingsview/index.html",
     },
   },
 } satisfies ElectrobunConfig;
