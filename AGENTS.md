@@ -10,10 +10,10 @@ Three processes communicate via Electrobun's typed RPC:
 
 - **Bun process** (`bun/`): Spawns opencode server, manages multi-agent sessions, streams events
   - `index.ts` — entry point, manages app menu and settings window lifecycle
-  - `workspace.ts` — opencode server lifecycle, session CRUD, question reply/reject, provider auth, MCP management
+  - `workspace.ts` — opencode server lifecycle, session CRUD, question reply/reject, provider auth
   - `stream.ts` — SSE event bridge with user message filtering and real-time part streaming
   - `rpc.ts` — main window RPC handler definitions, idempotent `initWorkspace`
-  - `settings-rpc.ts` — settings window RPC handler (provider + MCP operations)
+  - `settings-rpc.ts` — settings window RPC handler (provider operations)
   - `preferences.ts` — user preferences stored at `~/.openkrow/preferences.json`
   - `agents/` — multi-agent definitions and metadata
     - `index.ts` — exports all agents + `agentMeta` array (name, label, color, description)
@@ -33,7 +33,7 @@ Three processes communicate via Electrobun's typed RPC:
   - `components/WorkspaceSetup.tsx` — first-run workspace directory picker
   - `components/SessionHistory.tsx` — session history dropdown
 - **Settings webview** (`settingsview/`): Separate native window for settings
-  - `App.tsx` — settings UI with Providers and MCP Servers tabs
+  - `App.tsx` — settings UI with Providers tab
   - `rpc.ts` — settings-side RPC using `SettingsRPCSchema`
 - **Shared** (`shared/types.ts`): RPC schema types (`KrowRPCSchema`, `SettingsRPCSchema`), `AgentInfo`
 
@@ -143,11 +143,6 @@ client.auth.set({ providerID, auth })
 client.auth.remove({ providerID })
 client.provider.oauth.authorize({ providerID, method, inputs })
 client.provider.oauth.callback({ providerID, method, code })
-client.mcp.status()
-client.mcp.add({ name, config })
-client.mcp.connect({ name })
-client.mcp.disconnect({ name })
-client.config.update({ ... })  // for MCP removal (no dedicated remove endpoint)
 
 // WRONG v1 style (do not use):
 client.session.list({ query: { directory: "..." } })

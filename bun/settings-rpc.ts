@@ -78,45 +78,6 @@ export function createSettingsRpcHandler(
             return { error: err?.message ?? String(err) };
           }
         },
-
-        listMcpServers: async () => {
-          try {
-            const servers = await workspace.listMcpServers();
-            return { servers };
-          } catch (err: any) {
-            return { error: err?.message ?? String(err) };
-          }
-        },
-
-        addMcpServer: async ({ name, config }) => {
-          try {
-            await workspace.addMcpServer(name, config);
-            onSettingsChanged();
-            return { success: true };
-          } catch (err: any) {
-            return { error: err?.message ?? String(err) };
-          }
-        },
-
-        removeMcpServer: async ({ name }) => {
-          try {
-            await workspace.removeMcpServer(name);
-            onSettingsChanged();
-            return { success: true };
-          } catch (err: any) {
-            return { error: err?.message ?? String(err) };
-          }
-        },
-
-        reconnectMcpServer: async ({ name }) => {
-          try {
-            await workspace.reconnectMcpServer(name);
-            onSettingsChanged();
-            return { success: true };
-          } catch (err: any) {
-            return { error: err?.message ?? String(err) };
-          }
-        },
       },
       messages: {},
     },

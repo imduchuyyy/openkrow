@@ -75,7 +75,7 @@ Built with [Electrobun](https://electrobun.dev) (Bun-native desktop framework) a
 │                                                  │
 │  Settings Window (settingsview/)                 │
 │  ├── Provider authentication (API key + OAuth)   │
-│  └── MCP server management                      │
+│  └── Model configuration                        │
 └──────────────────────────────────────────────────┘
 ```
 

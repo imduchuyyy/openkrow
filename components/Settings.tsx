@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { rpc } from "../mainview/rpc";
-import type { ProviderInfo, McpServerInfo, ProviderAuthMethod, ProviderAuthPrompt } from "../shared/types";
+import type { ProviderInfo, ProviderAuthMethod, ProviderAuthPrompt } from "../shared/types";
 
-type Tab = "providers" | "mcp";
+type Tab = "providers";
 
 type Props = {
   onClose: () => void;
@@ -39,21 +39,11 @@ export default function Settings({ onClose }: Props) {
           >
             Providers
           </button>
-          <button
-            onClick={() => setTab("mcp")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-              tab === "mcp"
-                ? "border-white text-white"
-                : "border-transparent text-neutral-500 hover:text-neutral-300"
-            }`}
-          >
-            MCP Servers
-          </button>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5">
-          {tab === "providers" ? <ProvidersTab /> : <McpTab />}
+          <ProvidersTab />
         </div>
       </div>
     </div>
@@ -409,203 +399,6 @@ function ProviderAuthForm({ provider, onDone, onCancel }: {
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── MCP Tab ──
-
-function McpTab() {
-  const [servers, setServers] = useState<McpServerInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [addType, setAddType] = useState<"local" | "remote">("local");
-  const [addName, setAddName] = useState("");
-  const [addCommand, setAddCommand] = useState("");
-  const [addUrl, setAddUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const load = async () => {
-    setLoading(true);
-    const res = await rpc.request.listMcpServers({});
-    if ("servers" in res) {
-      setServers(res.servers);
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const handleAdd = async () => {
-    if (!addName.trim()) return;
-    setSaving(true);
-    if (addType === "local") {
-      if (!addCommand.trim()) { setSaving(false); return; }
-      await rpc.request.addMcpServer({
-        name: addName.trim(),
-        config: { type: "local", command: addCommand.trim().split(/\s+/) },
-      });
-    } else {
-      if (!addUrl.trim()) { setSaving(false); return; }
-      await rpc.request.addMcpServer({
-        name: addName.trim(),
-        config: { type: "remote", url: addUrl.trim() },
-      });
-    }
-    setAddName("");
-    setAddCommand("");
-    setAddUrl("");
-    setShowAdd(false);
-    setSaving(false);
-    load();
-  };
-
-  const handleRemove = async (name: string) => {
-    await rpc.request.removeMcpServer({ name });
-    load();
-  };
-
-  const handleReconnect = async (name: string) => {
-    await rpc.request.reconnectMcpServer({ name });
-    load();
-  };
-
-  const statusColor = (status: string) => {
-    switch (status) {
-      case "connected": return "text-green-400";
-      case "disabled": return "text-neutral-500";
-      case "failed": return "text-red-400";
-      case "needs_auth": return "text-yellow-400";
-      default: return "text-neutral-400";
-    }
-  };
-
-  const statusDot = (status: string) => {
-    switch (status) {
-      case "connected": return "bg-green-400";
-      case "disabled": return "bg-neutral-500";
-      case "failed": return "bg-red-400";
-      case "needs_auth": return "bg-yellow-400";
-      default: return "bg-neutral-400";
-    }
-  };
-
-  if (loading) {
-    return <div className="text-xs text-neutral-500 text-center py-8">Loading MCP servers...</div>;
-  }
-
-  return (
-    <div className="space-y-3">
-      {/* Server list */}
-      {servers.map((server) => (
-        <div key={server.name} className="bg-neutral-800/50 border border-neutral-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">{server.name}</span>
-              <span className={`text-[10px] flex items-center gap-1 ${statusColor(server.status)}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${statusDot(server.status)}`} />
-                {server.status}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {server.status === "failed" && (
-                <button
-                  onClick={() => handleReconnect(server.name)}
-                  className="text-[10px] px-2 py-1 bg-neutral-700 hover:bg-neutral-600 rounded text-neutral-300 transition-colors"
-                >
-                  Reconnect
-                </button>
-              )}
-              <button
-                onClick={() => handleRemove(server.name)}
-                className="text-[10px] text-red-400 hover:text-red-300 transition-colors"
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-          {server.error && (
-            <p className="mt-1 text-[10px] text-red-400">{server.error}</p>
-          )}
-          {server.config && (
-            <p className="mt-1 text-[10px] text-neutral-500 font-mono">
-              {server.config.type === "local"
-                ? server.config.command.join(" ")
-                : server.config.url}
-            </p>
-          )}
-        </div>
-      ))}
-
-      {servers.length === 0 && !showAdd && (
-        <div className="text-xs text-neutral-500 text-center py-4">No MCP servers configured</div>
-      )}
-
-      {/* Add form */}
-      {showAdd ? (
-        <div className="bg-neutral-800/50 border border-neutral-700/50 rounded-lg p-4 space-y-3">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setAddType("local")}
-              className={`px-2 py-1 text-[11px] rounded ${addType === "local" ? "bg-neutral-600 text-white" : "bg-neutral-700/50 text-neutral-400"}`}
-            >
-              Local
-            </button>
-            <button
-              onClick={() => setAddType("remote")}
-              className={`px-2 py-1 text-[11px] rounded ${addType === "remote" ? "bg-neutral-600 text-white" : "bg-neutral-700/50 text-neutral-400"}`}
-            >
-              Remote
-            </button>
-          </div>
-          <input
-            type="text"
-            value={addName}
-            onChange={(e) => setAddName(e.target.value)}
-            placeholder="Server name"
-            className="w-full bg-neutral-900 border border-neutral-600 rounded-md px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 outline-none focus:border-neutral-500"
-          />
-          {addType === "local" ? (
-            <input
-              type="text"
-              value={addCommand}
-              onChange={(e) => setAddCommand(e.target.value)}
-              placeholder="Command (e.g. npx -y @modelcontextprotocol/server-filesystem)"
-              className="w-full bg-neutral-900 border border-neutral-600 rounded-md px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 outline-none focus:border-neutral-500"
-            />
-          ) : (
-            <input
-              type="text"
-              value={addUrl}
-              onChange={(e) => setAddUrl(e.target.value)}
-              placeholder="Server URL (e.g. https://mcp.example.com/sse)"
-              className="w-full bg-neutral-900 border border-neutral-600 rounded-md px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-500 outline-none focus:border-neutral-500"
-            />
-          )}
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={() => { setShowAdd(false); setAddName(""); setAddCommand(""); setAddUrl(""); }}
-              className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleAdd}
-              disabled={saving || !addName.trim() || (addType === "local" ? !addCommand.trim() : !addUrl.trim())}
-              className="px-3 py-1.5 bg-white text-neutral-900 rounded-md text-xs font-medium hover:bg-neutral-100 transition-colors disabled:opacity-40"
-            >
-              Add Server
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowAdd(true)}
-          className="w-full py-2 border border-dashed border-neutral-700 rounded-lg text-xs text-neutral-500 hover:text-neutral-300 hover:border-neutral-600 transition-colors"
-        >
-          + Add MCP Server
-        </button>
-      )}
     </div>
   );
 }

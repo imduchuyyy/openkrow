@@ -1,6 +1,6 @@
 import { createOpencode } from "@opencode-ai/sdk/v2";
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
-import type { ChatMessage, MessagePart, ProviderInfo, ProviderAuthData, ProviderAuthMethod, ProviderOAuthStart, McpServerInfo, McpLocalConfig, McpRemoteConfig } from "../shared/types";
+import type { ChatMessage, MessagePart, ProviderInfo, ProviderAuthData, ProviderAuthMethod, ProviderOAuthStart } from "../shared/types";
 import { agents, agentMeta } from "./agents";
 import { EventStream, type RpcSend } from "./stream";
 

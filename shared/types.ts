@@ -130,27 +130,6 @@ export type ProviderAuthData =
   | { type: "oauth"; refresh: string; access: string; expires: number }
   | { type: "wellknown"; key: string; token: string };
 
-export type McpServerInfo = {
-  name: string;
-  status: "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration";
-  error?: string;
-  config?: McpLocalConfig | McpRemoteConfig;
-};
-
-export type McpLocalConfig = {
-  type: "local";
-  command: string[];
-  environment?: Record<string, string>;
-  enabled?: boolean;
-};
-
-export type McpRemoteConfig = {
-  type: "remote";
-  url: string;
-  enabled?: boolean;
-  headers?: Record<string, string>;
-};
-
 export type Theme = "dark" | "light" | "system";
 
 export type AgentInfo = {
@@ -193,22 +172,6 @@ export type SettingsRPCSchema = {
       };
       removeProviderAuth: {
         params: { providerID: string };
-        response: { success: boolean } | { error: string };
-      };
-      listMcpServers: {
-        params: {};
-        response: { servers: McpServerInfo[] } | { error: string };
-      };
-      addMcpServer: {
-        params: { name: string; config: McpLocalConfig | McpRemoteConfig };
-        response: { success: boolean } | { error: string };
-      };
-      removeMcpServer: {
-        params: { name: string };
-        response: { success: boolean } | { error: string };
-      };
-      reconnectMcpServer: {
-        params: { name: string };
         response: { success: boolean } | { error: string };
       };
     };
@@ -334,23 +297,6 @@ export type KrowRPCSchema = {
       };
       removeProviderAuth: {
         params: { providerID: string };
-        response: { success: boolean } | { error: string };
-      };
-      // Settings: MCP
-      listMcpServers: {
-        params: {};
-        response: { servers: McpServerInfo[] } | { error: string };
-      };
-      addMcpServer: {
-        params: { name: string; config: McpLocalConfig | McpRemoteConfig };
-        response: { success: boolean } | { error: string };
-      };
-      removeMcpServer: {
-        params: { name: string };
-        response: { success: boolean } | { error: string };
-      };
-      reconnectMcpServer: {
-        params: { name: string };
         response: { success: boolean } | { error: string };
       };
     };
