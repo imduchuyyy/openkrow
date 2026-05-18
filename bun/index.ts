@@ -4,7 +4,6 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { WorkspaceManager } from "./workspace";
 import { createRpcHandler } from "./rpc";
-import { createSettingsRpcHandler } from "./settings-rpc";
 import type { Theme } from "../shared/types";
 
 // Ensure opencode CLI is on PATH
@@ -12,81 +11,32 @@ const home = homedir();
 process.env.PATH = `${join(home, ".opencode/bin")}:/usr/local/bin:/usr/bin:/bin:${process.env.PATH ?? ""}`;
 process.env.HOME = home;
 
-// Capture views folder path before process.chdir() happens in workspace.start()
-const viewsRoot = resolve("../Resources/app/views");
-
 // Core services
 const workspace = new WorkspaceManager();
 const desktopPath = join(home, "Desktop");
 let appTheme: Theme = "dark";
-let settingsRpc: any | null = null;
 
 function setAppTheme(theme: Theme) {
   appTheme = theme;
   rpc.send.themeChanged({ theme });
-  settingsRpc?.send.themeChanged({ theme });
 }
 
-const rpc = createRpcHandler(workspace, desktopPath, openSettingsWindow, {
+const rpc = createRpcHandler(workspace, desktopPath, {
   getTheme: () => appTheme,
   setTheme: setAppTheme,
 });
-
-// Settings window management
-let settingsWindow: BrowserWindow | null = null;
-
-function openSettingsWindow() {
-  if (settingsWindow) {
-    settingsWindow.activate();
-    return;
-  }
-
-  settingsRpc = createSettingsRpcHandler(
-    workspace,
-    () => {
-      rpc.send.settingsChanged({});
-    },
-    {
-      getTheme: () => appTheme,
-      setTheme: setAppTheme,
-    },
-  );
-  settingsWindow = new BrowserWindow({
-    title: "Settings",
-    url: "views://settingsview/index.html",
-    rpc: settingsRpc,
-    titleBarStyle: "hiddenInset",
-    viewsRoot,
-    frame: {
-      width: 560,
-      height: 600,
-      x: 200,
-      y: 100,
-    },
-  });
-
-  const settingsId = settingsWindow.id;
-  Electrobun.events.on("close", (event: any) => {
-    if (event?.data?.id === settingsId) {
-      settingsWindow = null;
-      settingsRpc = null;
-    }
-  });
-}
 
 // Application menu
 ApplicationMenu.setApplicationMenu([
   {
     submenu: [
-      { label: "About Krow", role: "about" },
+      { label: "About OpenKrow", role: "about" },
       { type: "separator" },
-      { label: "Settings...", action: "open-settings", accelerator: "cmd+," },
-      { type: "separator" },
-      { label: "Hide Krow", role: "hide" },
+      { label: "Hide OpenKrow", role: "hide" },
       { label: "Hide Others", role: "hideOthers" },
       { label: "Show All", role: "showAll" },
       { type: "separator" },
-      { label: "Quit Krow", role: "quit", accelerator: "cmd+q" },
+      { label: "Quit OpenKrow", role: "quit", accelerator: "cmd+q" },
     ],
   },
   {
@@ -117,15 +67,9 @@ ApplicationMenu.setApplicationMenu([
   },
 ]);
 
-ApplicationMenu.on("application-menu-clicked", (event: any) => {
-  if (event?.action === "open-settings") {
-    openSettingsWindow();
-  }
-});
-
 // Main window
 const win = new BrowserWindow({
-  title: "Krow",
+  title: "OpenKrow",
   url: "views://mainview/index.html",
   rpc,
   frame: {

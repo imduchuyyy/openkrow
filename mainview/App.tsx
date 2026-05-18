@@ -8,9 +8,11 @@ import QuestionPrompt from "../components/QuestionPrompt";
 import ThemeToggle from "../components/ThemeToggle";
 import { KrowLogo } from "../components/KrowLogo";
 import WorkspaceSetup from "../components/WorkspaceSetup";
+import SettingsView from "../components/SettingsView";
 
 
 type AppState = "workspace-setup" | "loading" | "ready" | "error";
+type View = "chat" | "settings";
 
 export default function App() {
   const [state, setState] = useState<AppState>("workspace-setup");
@@ -27,6 +29,7 @@ export default function App() {
   const [activeAgent, setActiveAgent] = useState<string | null>("cofounder");
   const [lastWorkspacePath, setLastWorkspacePath] = useState<string | null>(null);
   const [pendingSetupDetails, setPendingSetupDetails] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<View>("chat");
   const sessionIdRef = useRef<string | null>(null);
   const sendingRef = useRef(false);
 
@@ -295,7 +298,7 @@ export default function App() {
   };
 
   const handleOpenSettings = () => {
-    rpc.request.openSettings({});
+    setActiveView("settings");
   };
 
   // ─── Workspace Setup Screen ───
@@ -352,49 +355,56 @@ export default function App() {
         currentSessionId={sessionId}
         agents={agents}
         activeAgent={activeAgent}
-        onSelectSession={handleSelectSession}
-        onNewSession={handleNewSession}
+        onSelectSession={(session) => { handleSelectSession(session); setActiveView("chat"); }}
+        onNewSession={() => { handleNewSession(); setActiveView("chat"); }}
         onOpenSettings={handleOpenSettings}
       />
 
-      {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Topbar */}
-        <div
-          className="flex items-center justify-between px-4 py-2.5 glass-toolbar shrink-0 relative z-10"
-          style={{ paddingTop: "1.75rem", WebkitAppRegion: "drag" } as any}
-        >
-          <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as any}>
-            {activeAgent && (
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: agents.find((a) => a.name === activeAgent)?.color ?? "#6B7280" }}
-                />
-                <span className="font-mono text-[11px] text-text-muted uppercase tracking-wider">
-                  {agents.find((a) => a.name === activeAgent)?.label ?? "Founder"}
-                </span>
-                {sending && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: "no-drag" } as any}>
-            <ThemeToggle />
-          </div>
+      {/* Main content area */}
+      {activeView === "settings" ? (
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="shrink-0" style={{ height: "1.75rem", WebkitAppRegion: "drag" } as any} />
+          <SettingsView onBack={() => setActiveView("chat")} />
         </div>
+      ) : (
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Topbar */}
+          <div
+            className="flex items-center justify-between px-4 py-2.5 glass-toolbar shrink-0 relative z-10"
+            style={{ paddingTop: "1.75rem", WebkitAppRegion: "drag" } as any}
+          >
+            <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as any}>
+              {activeAgent && (
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: agents.find((a) => a.name === activeAgent)?.color ?? "#6B7280" }}
+                  />
+                  <span className="font-mono text-[11px] text-text-muted uppercase tracking-wider">
+                    {agents.find((a) => a.name === activeAgent)?.label ?? "Founder"}
+                  </span>
+                  {sending && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                </div>
+              )}
+            </div>
 
-        {/* Messages */}
-        <MessageList messages={messages} sending={sending} />
+            <div className="flex items-center gap-0.5" style={{ WebkitAppRegion: "no-drag" } as any}>
+              <ThemeToggle />
+            </div>
+          </div>
 
-        {/* Question prompt */}
-        {activeQuestion && (
-          <QuestionPrompt question={activeQuestion} onDismiss={() => setActiveQuestion(null)} />
-        )}
+          {/* Messages */}
+          <MessageList messages={messages} sending={sending} />
 
-        {/* Input */}
-        <ChatInput onSend={handleSend} onStop={handleStopSession} disabled={sending || !!activeQuestion} sending={sending} onModelChange={setSelectedModel} refreshKey={settingsRefreshKey} />
-      </div>
+          {/* Question prompt */}
+          {activeQuestion && (
+            <QuestionPrompt question={activeQuestion} onDismiss={() => setActiveQuestion(null)} />
+          )}
+
+          {/* Input */}
+          <ChatInput onSend={handleSend} onStop={handleStopSession} disabled={sending || !!activeQuestion} sending={sending} onModelChange={setSelectedModel} refreshKey={settingsRefreshKey} />
+        </div>
+      )}
     </div>
   );
 }

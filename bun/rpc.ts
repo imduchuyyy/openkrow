@@ -14,7 +14,6 @@ import WORKSPACE_SETUP_PROMPT from "../prompts/workspace-setup.txt";
 export function createRpcHandler(
   workspace: WorkspaceManager,
   desktopPath: string,
-  onOpenSettings: () => void,
   themeSync: { getTheme: () => Theme; setTheme: (theme: Theme) => void },
 ) {
   let initPromise: Promise<{ path: string } | { error: string }> | null = null;
@@ -191,7 +190,7 @@ export function createRpcHandler(
         },
 
         openSettings: async () => {
-          onOpenSettings();
+          // Settings is now rendered in-app, this is a no-op
           return { success: true };
         },
 
