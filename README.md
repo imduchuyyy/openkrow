@@ -1,22 +1,43 @@
-# Krow
+# OpenKrow
 
-A desktop AI agent built with [Electrobun](https://electrobun.dev) and powered by [opencode](https://opencode.ai). Krow runs directly on your desktop, providing AI-assisted productivity through a clean chat interface.
+**5 AI agents. 1 desktop app. 0 employees needed.**
 
-## Features
+OpenKrow is a free, open-source desktop app that gives solo founders an entire AI team — marketing, development, legal, finance, and operations — so you can focus on building your product, not burning out.
 
-- **Desktop-native** — Built with Electrobun (Bun-native desktop framework), not Electron
-- **AI chat interface** — Clean, minimal chat UI with markdown rendering, code blocks, and tool execution visibility
-- **Session management** — Create new sessions, browse history, and switch between conversations
-- **Model selection** — Choose from available AI models directly in the chat input
-- **Interactive questions** — Handles multi-choice prompts from the AI agent with a native UI
-- **Custom agent** — Ships with a "Krow" agent prompt tailored for desktop office productivity tasks
+[![GitHub](https://img.shields.io/github/stars/openkrow/openkrow?style=flat)](https://github.com/openkrow/openkrow)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Discord](https://img.shields.io/discord/openkrow?label=Discord)](https://discord.gg/openkrow)
 
-## Prerequisites
+## Meet Your Agents
 
-- [Bun](https://bun.sh) runtime installed
+| Agent | Role |
+|-------|------|
+| **MKT** — Marketing | Blog posts, social media, newsletters, campaigns, landing page copy |
+| **DEV** — Development | Code review, feature writing, bug fixes, documentation, pair programming |
+| **LGL** — Legal | Terms of service, privacy policies, contracts, compliance docs |
+| **FIN** — Finance | Expense tracking, invoices, runway forecasts, financial reports |
+| **OPS** — Operations | Email triage, scheduling, support tickets, daily task management |
+
+## Who It's For
+
+Solo founders, indie hackers, bootstrappers, side hustlers, micro-SaaS builders, and anyone running a one-person company who needs a team but can't afford one yet.
+
+## Download
+
+Available on macOS, Windows, and Linux:
+
+**[Download the latest release →](https://github.com/openkrow/openkrow/releases)**
+
+Or build from source (see below).
+
+## Build from Source
+
+### Prerequisites
+
+- [Bun](https://bun.sh) runtime
 - [opencode CLI](https://opencode.ai) installed (expected at `~/.opencode/bin`)
 
-## Getting Started
+### Commands
 
 ```sh
 # Install dependencies
@@ -25,43 +46,38 @@ bun install
 # Development mode (CSS watch + hot reload)
 bun run dev
 
-# Or build CSS once + start
+# Build CSS once + start
 bun run start
+
+# Production build
+bun run build
 ```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `bun run dev` | Dev mode with CSS watch + Electrobun watch |
-| `bun run start` | Build CSS once + Electrobun dev |
-| `bun run build` | Production build |
-| `bun run build:prod` | Production build (stable env) |
-| `npx tsc --noEmit` | Type check |
 
 ## Architecture
 
-Krow is a two-process desktop app:
+Built with [Electrobun](https://electrobun.dev) (Bun-native desktop framework) and powered by [opencode](https://opencode.ai).
 
 ```
-┌─────────────────────────────────────────────┐
-│  Bun Process (src/bun/)                     │
-│  ├── Spawns opencode server (port auto)     │
-│  ├── Manages sessions & questions           │
-│  └── Forwards SSE events via RPC            │
-│                    ▲                        │
-│                    │ Electrobun typed RPC    │
-│                    ▼                        │
-│  Webview (src/mainview/)                    │
-│  ├── React 19 + Tailwind v4 chat UI        │
-│  ├── Message streaming with parts           │
-│  └── Session history & model selection      │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Bun Process (bun/)                              │
+│  ├── Spawns opencode server (auto port)          │
+│  ├── Multi-agent system with dedicated prompts   │
+│  ├── Session & preference management             │
+│  └── SSE event streaming via typed RPC           │
+│                    ▲                             │
+│                    │ Electrobun typed RPC         │
+│                    ▼                             │
+│  Main Webview (mainview/)                        │
+│  ├── React 19 + Tailwind v4 chat UI             │
+│  ├── Sidebar with agent selection                │
+│  ├── Real-time word-by-word streaming            │
+│  └── Session history & model selection           │
+│                                                  │
+│  Settings Window (settingsview/)                 │
+│  ├── Provider authentication (API key + OAuth)   │
+│  └── MCP server management                      │
+└──────────────────────────────────────────────────┘
 ```
-
-- **Bun process** — Boots the opencode server, manages session lifecycle, bridges SSE events to the webview
-- **Webview** — React chat interface with markdown rendering, tool call display, and question prompts
-- **Shared types** — Typed RPC schema in `src/shared/types.ts`
 
 ## Tech Stack
 
@@ -70,6 +86,13 @@ Krow is a two-process desktop app:
 - [React 19](https://react.dev) — UI framework
 - [Tailwind CSS v4](https://tailwindcss.com) — Styling
 - [TypeScript](https://typescriptlang.org) — Type safety
+
+## Contributing
+
+OpenKrow is built in the open. Fork it, self-host it, make it yours.
+
+- [GitHub Issues](https://github.com/openkrow/openkrow/issues)
+- [Discord Community](https://discord.gg/openkrow)
 
 ## License
 
