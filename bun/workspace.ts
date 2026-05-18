@@ -136,7 +136,9 @@ export class WorkspaceManager {
           .filter((p) => p.type === "text")
           .map((p) => (p as any).text)
           .join("");
-        history.push({ id: info.id, role: "assistant", text, createdAt: info.time.created, parts: messageParts });
+        const agentName = (info as any).agent ?? "cofounder";
+        const agentColor = agentMeta.find((a) => a.name === agentName)?.color ?? "#6B7280";
+        history.push({ id: info.id, role: "assistant", text, createdAt: info.time.created, parts: messageParts, agent: agentName, agentColor });
       }
     }
 

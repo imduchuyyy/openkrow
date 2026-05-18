@@ -606,17 +606,6 @@
     border-left-style: var(--tw-border-style);
     border-left-width: 2px;
   }
-  .\!border-dashed {
-    --tw-border-style: dashed !important;
-    border-style: dashed !important;
-  }
-  .border-dashed {
-    --tw-border-style: dashed;
-    border-style: dashed;
-  }
-  .\!border-surface-400 {
-    border-color: var(--surface-400) !important;
-  }
   .border-\[\#fb923c\] {
     border-color: #fb923c;
   }
@@ -689,12 +678,6 @@
   .bg-green-400 {
     background-color: var(--color-green-400);
   }
-  .bg-neutral-400 {
-    background-color: var(--color-neutral-400);
-  }
-  .bg-neutral-500 {
-    background-color: var(--color-neutral-500);
-  }
   .bg-neutral-600 {
     background-color: var(--color-neutral-600);
   }
@@ -719,9 +702,6 @@
   .bg-neutral-900 {
     background-color: var(--color-neutral-900);
   }
-  .bg-red-400 {
-    background-color: var(--color-red-400);
-  }
   .bg-red-500\/80 {
     background-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 80%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -737,17 +717,11 @@
   .bg-surface-200 {
     background-color: var(--surface-200);
   }
-  .bg-surface-500 {
-    background-color: var(--surface-500);
-  }
   .bg-transparent {
     background-color: transparent;
   }
   .bg-white {
     background-color: var(--color-white);
-  }
-  .bg-yellow-400 {
-    background-color: var(--color-yellow-400);
   }
   .p-1 {
     padding: calc(var(--spacing) * 1);
@@ -988,9 +962,6 @@
   .text-white {
     color: var(--color-white);
   }
-  .text-yellow-400 {
-    color: var(--color-yellow-400);
-  }
   .uppercase {
     text-transform: uppercase;
   }
@@ -1046,13 +1017,6 @@
       border-color: #fb923c;
     }
   }
-  .hover\:\!border-\[\#fb923c\]\/30 {
-    &:hover {
-      @media (hover: hover) {
-        border-color: color-mix(in oklab, #fb923c 30%, transparent) !important;
-      }
-    }
-  }
   .hover\:border-\[\#fb923c\] {
     &:hover {
       @media (hover: hover) {
@@ -1064,13 +1028,6 @@
     &:hover {
       @media (hover: hover) {
         border-color: var(--surface-500);
-      }
-    }
-  }
-  .hover\:border-neutral-600 {
-    &:hover {
-      @media (hover: hover) {
-        border-color: var(--color-neutral-600);
       }
     }
   }
