@@ -15,8 +15,8 @@ export const agents = {
 };
 
 export const agentMeta = [
-  { name: "cofounder", label: "CoFounder", color: "#3B82F6", description: cofounderAgent.description! },
-  { name: "marketing", label: "Marketing", color: "#F97316", description: marketingAgent.description! },
+  { name: "cofounder", label: "CoFounder", color: "#fb923c", description: cofounderAgent.description! },
+  { name: "marketing", label: "Marketing", color: "#EC4899", description: marketingAgent.description! },
   { name: "development", label: "Development", color: "#10B981", description: developmentAgent.description! },
   { name: "legal", label: "Legal", color: "#8B5CF6", description: legalAgent.description! },
   { name: "finance", label: "Finance", color: "#06B6D4", description: financeAgent.description! },
