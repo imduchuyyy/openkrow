@@ -3,8 +3,8 @@ import type { KrowRPCSchema, Theme } from "../shared/types";
 import { WorkspaceManager } from "./workspace";
 import { ensureOpencode } from "./opencode-installer";
 import { getLastWorkspace, setLastWorkspace } from "./preferences";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, rmSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { $ } from "bun";
 import WORKSPACE_SETUP_PROMPT from "../prompts/workspace-setup.txt";
 
@@ -196,6 +196,46 @@ export function createRpcHandler(
 
         listAgents: async () => {
           return { agents: workspace.getAgents() };
+        },
+
+        listFiles: async ({ path: relPath }) => {
+          try {
+            const dir = workspace.currentDirectory;
+            if (!dir) return { error: "No workspace active" };
+            const target = relPath ? resolve(dir, relPath) : dir;
+            if (!target.startsWith(dir)) return { error: "Path outside workspace" };
+            const entries = readdirSync(target, { withFileTypes: true });
+            const files = entries
+              .filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
+              .sort((a, b) => {
+                if (a.isDirectory() && !b.isDirectory()) return -1;
+                if (!a.isDirectory() && b.isDirectory()) return 1;
+                return a.name.localeCompare(b.name);
+              })
+              .map((e) => ({
+                name: e.name,
+                path: relPath ? `${relPath}/${e.name}` : e.name,
+                isDirectory: e.isDirectory(),
+              }));
+            return { files };
+          } catch (err: any) {
+            return { error: err?.message ?? String(err) };
+          }
+        },
+
+        readFile: async ({ path: relPath }) => {
+          try {
+            const dir = workspace.currentDirectory;
+            if (!dir) return { error: "No workspace active" };
+            const target = resolve(dir, relPath);
+            if (!target.startsWith(dir)) return { error: "Path outside workspace" };
+            const stat = statSync(target);
+            if (stat.size > 512 * 1024) return { error: "File too large (>512KB)" };
+            const content = readFileSync(target, "utf-8");
+            return { content, path: relPath };
+          } catch (err: any) {
+            return { error: err?.message ?? String(err) };
+          }
         },
 
         replyQuestion: async ({ requestId, answers }) => {

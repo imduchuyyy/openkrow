@@ -132,6 +132,12 @@ export type ProviderAuthData =
 
 export type Theme = "dark" | "light" | "system";
 
+export type FileEntry = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+};
+
 export type AgentInfo = {
   name: string;
   label: string;
@@ -265,6 +271,14 @@ export type KrowRPCSchema = {
       listAgents: {
         params: {};
         response: { agents: AgentInfo[] };
+      };
+      listFiles: {
+        params: { path?: string };
+        response: { files: FileEntry[] } | { error: string };
+      };
+      readFile: {
+        params: { path: string };
+        response: { content: string; path: string } | { error: string };
       };
       replyQuestion: {
         params: { requestId: string; answers: string[][] };
