@@ -50,7 +50,7 @@ export default function App() {
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
-    unsubs.push(onStreamEvent("partUpdated", (payload: { sessionId: string; messageId: string; part: MessagePart; delta?: string; agent?: string; agentColor?: string }) => {
+    unsubs.push(onStreamEvent("partUpdated", (payload: { sessionId: string; messageId: string; part: MessagePart; agent?: string; agentColor?: string }) => {
       const { messageId, part, agent, agentColor } = payload;
       if (payload.sessionId !== sessionIdRef.current) return;
 
@@ -81,6 +81,33 @@ export default function App() {
           agent,
           agentColor,
         }];
+      });
+    }));
+
+    // Handle incremental text deltas for real-time character-by-character streaming
+    unsubs.push(onStreamEvent("partDelta", (payload: { sessionId: string; messageId: string; partId: string; field: string; delta: string }) => {
+      const { messageId, partId, field, delta } = payload;
+
+      setMessages((prev) => {
+        const msg = prev.find((m) => m.id === messageId);
+        if (!msg || !msg.parts) return prev;
+
+        const partIdx = msg.parts.findIndex((p) => p.id === partId);
+        if (partIdx < 0) return prev;
+
+        const part = msg.parts[partIdx];
+        if (field !== "text" || (part.type !== "text" && part.type !== "reasoning")) return prev;
+
+        const updatedPart = { ...part, text: (part.text ?? "") + delta };
+        const parts = [...msg.parts];
+        parts[partIdx] = updatedPart;
+
+        const text = parts
+          .filter((p) => p.type === "text")
+          .map((p) => (p as any).text)
+          .join("");
+
+        return prev.map((m) => m.id === messageId ? { ...m, parts, text } : m);
       });
     }));
 

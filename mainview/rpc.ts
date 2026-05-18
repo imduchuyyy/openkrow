@@ -29,6 +29,9 @@ export const rpc = Electroview.defineRPC<KrowRPCSchema>({
       partUpdated: (payload) => {
         emit("partUpdated", payload);
       },
+      partDelta: (payload) => {
+        emit("partDelta", payload);
+      },
       messageComplete: (payload) => {
         emit("messageComplete", payload);
       },

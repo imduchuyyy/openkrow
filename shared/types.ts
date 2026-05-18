@@ -361,7 +361,8 @@ export type KrowRPCSchema = {
     messages: {
       workspaceReady: { path: string };
       workspaceError: { error: string };
-      partUpdated: { sessionId: string; messageId: string; part: MessagePart; delta?: string; agent?: string; agentColor?: string };
+      partUpdated: { sessionId: string; messageId: string; part: MessagePart; agent?: string; agentColor?: string };
+      partDelta: { sessionId: string; messageId: string; partId: string; field: string; delta: string };
       messageComplete: { sessionId: string; messageId: string };
       sessionStatus: { sessionId: string; status: "idle" | "busy" | "retry" };
       sessionError: { sessionId: string; error: string };

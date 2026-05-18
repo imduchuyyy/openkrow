@@ -282,50 +282,6 @@ export class WorkspaceManager {
     await this.client.auth.remove({ providerID });
   }
 
-  // ── Settings: MCP management ──
-
-  async listMcpServers(): Promise<McpServerInfo[]> {
-    if (!this.client) throw new Error("No workspace active");
-    const statusRes = await this.client.mcp.status();
-    if (!statusRes.data) return [];
-
-    // Get config to retrieve server configs
-    const configRes = await this.client.config.get();
-    const mcpConfig = configRes.data?.mcp ?? {};
-
-    const servers: McpServerInfo[] = [];
-    for (const [name, status] of Object.entries(statusRes.data as Record<string, any>)) {
-      const cfg = (mcpConfig as any)[name];
-      servers.push({
-        name,
-        status: status.status,
-        error: status.error,
-        config: cfg && typeof cfg === "object" && "type" in cfg ? cfg : undefined,
-      });
-    }
-    return servers;
-  }
-
-  async addMcpServer(name: string, config: McpLocalConfig | McpRemoteConfig): Promise<void> {
-    if (!this.client) throw new Error("No workspace active");
-    await this.client.mcp.add({ name, config: config as any });
-  }
-
-  async removeMcpServer(name: string): Promise<void> {
-    if (!this.client) throw new Error("No workspace active");
-    // Disconnect first, then disable via config
-    try { await this.client.mcp.disconnect({ name }); } catch {}
-    const configRes = await this.client.config.get();
-    const mcp = { ...(configRes.data?.mcp as any ?? {}) };
-    delete mcp[name];
-    await this.client.config.update({ config: { mcp } as any });
-  }
-
-  async reconnectMcpServer(name: string): Promise<void> {
-    if (!this.client) throw new Error("No workspace active");
-    await this.client.mcp.connect({ name });
-  }
-
   /**
    * Map raw SDK parts to our MessagePart type.
    */

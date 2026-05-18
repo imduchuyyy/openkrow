@@ -87,7 +87,7 @@ export function createRpcHandler(
                 rpc.send.downloadProgress({ message });
               });
               await workspace.start(path);
-              workspace.startEventStream(rpc.send);
+              workspace.startEventStream(rpc.send as any);
               setLastWorkspace(path);
               return { path };
             } catch (err: any) {
@@ -116,7 +116,7 @@ export function createRpcHandler(
                   rpc.send.downloadProgress({ message });
                 });
                 await workspace.start(desktopPath);
-                workspace.startEventStream(rpc.send);
+                workspace.startEventStream(rpc.send as any);
                 return { path: desktopPath };
               } catch (err: any) {
                 initPromise = null;
